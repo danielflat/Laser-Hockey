@@ -9,6 +9,7 @@ import gymnasium as gym
 from gymnasium import spaces
 from gymnasium.error import DependencyNotInstalled
 from gymnasium.utils import seeding, EzPickle
+from enum import Enum
 
 # import pyglet
 # from pyglet import gl
@@ -74,6 +75,10 @@ class ContactDetector(contactListener):
   def EndContact(self, contact):
     pass
 
+class Mode(Enum):
+    NORMAL = 0
+    TRAIN_SHOOTING = 1
+    TRAIN_DEFENSE = 2
 
 class HockeyEnv(gym.Env, EzPickle):
   metadata = {
@@ -82,11 +87,8 @@ class HockeyEnv(gym.Env, EzPickle):
   }
 
   continuous = False
-  NORMAL = 0
-  TRAIN_SHOOTING = 1
-  TRAIN_DEFENSE = 2
 
-  def __init__(self, keep_mode=True, mode=NORMAL, verbose=False):
+  def __init__(self, keep_mode: bool=True, mode: int | str | Mode = Mode.NORMAL, verbose: bool=False):
     """ mode: is the game mode: NORMAL, TRAIN_SHOOTING, TRAIN_DEFENSE,
         keep_mode: whether the puck gets catched by the player
         it can be changed later using the reset function
@@ -340,18 +342,19 @@ class HockeyEnv(gym.Env, EzPickle):
 
     return goal
 
-  def reset(self, one_starting=None, mode=None):
+  def reset(self, one_starting=None, mode=None, seed=None, options=None):
     self._destroy()
+    self.seed(seed)
     self.world.contactListener_keepref = ContactDetector(self, verbose=self.verbose)
     self.world.contactListener = self.world.contactListener_keepref
     self.done = False
     self.winner = 0
     self.prev_shaping = None
     self.time = 0
-    if mode is not None and mode in [self.NORMAL, self.TRAIN_SHOOTING, self.TRAIN_DEFENSE]:
+    if mode is not None and hasattr(Mode, self.mode):
       self.mode = mode
 
-    if self.mode == self.NORMAL:
+    if self.mode == Mode.NORMAL:
       self.max_timesteps = 250
       if one_starting is not None:
         self.one_starts = one_starting
@@ -379,7 +382,7 @@ class HockeyEnv(gym.Env, EzPickle):
       False
     )
     blue = (93, 158, 199)
-    if self.mode != self.NORMAL:
+    if self.mode != Mode.NORMAL:
       self.player2 = self._create_player(
         (4 * W / 5 + self.r_uniform(-W / 3, W / 6), H / 2 + self.r_uniform(-H / 4, H / 4)),
         blue,
@@ -391,14 +394,14 @@ class HockeyEnv(gym.Env, EzPickle):
         blue,
         True
       )
-    if self.mode == self.NORMAL or self.mode == self.TRAIN_SHOOTING:
-      if self.one_starts or self.mode == self.TRAIN_SHOOTING:
+    if self.mode == Mode.NORMAL or self.mode == Mode.TRAIN_SHOOTING:
+      if self.one_starts or self.mode == Mode.TRAIN_SHOOTING:
         self.puck = self._create_puck((W / 2 - self.r_uniform(H / 8, H / 4),
                                        H / 2 + self.r_uniform(-H / 8, H / 8)), (0, 0, 0))
       else:
         self.puck = self._create_puck((W / 2 + self.r_uniform(H / 8, H / 4),
                                        H / 2 + self.r_uniform(-H / 8, H / 8)), (0, 0, 0))
-    elif self.mode == self.TRAIN_DEFENSE:
+    elif self.mode == Mode.TRAIN_DEFENSE:
       self.puck = self._create_puck((W / 2 + self.r_uniform(0, W / 3),
                                      H / 2 + 0.8 * self.r_uniform(-H / 2, H / 2)), (0, 0, 0))
       direction = (self.puck.position - (
@@ -744,6 +747,33 @@ class HockeyEnv(gym.Env, EzPickle):
       pygame.display.quit()
       pygame.quit()
       self.isopen = False
+  
+  @property
+  def mode(self) -> Mode:
+    return self._mode
+  
+  @mode.setter
+  def mode(self, value: str | int | Mode):
+    """
+    Set the Enum object using an Enum, name, or value.
+    """
+    if isinstance(value, Mode):
+      # If the input is already an Enum member, set it directly
+      self._mode = value
+    elif isinstance(value, str):
+      # If the input is a name, convert it to the Enum
+      try:
+        self._mode = Mode[value]
+      except KeyError:
+        raise ValueError(f"{value} is not a valid name for {Mode.__name__}")
+    elif isinstance(value, int):
+      # If the input is a value, convert it to the Enum
+      try:
+        self._mode = Mode(value)
+      except ValueError:
+        raise ValueError(f"{value} is not a valid value for {Mode.__name__}")
+    else:
+      raise TypeError("Input value must be an Enum, name (str), or value (int)")
 
 class BasicOpponent():
   def __init__(self, weak=True, keep_mode=True):
@@ -840,7 +870,7 @@ class HumanOpponent():
 
 
 class HockeyEnv_BasicOpponent(HockeyEnv):
-  def __init__(self, mode=HockeyEnv.NORMAL, weak_opponent=False):
+  def __init__(self, mode=Mode.NORMAL, weak_opponent=False):
     super().__init__(mode=mode, keep_mode=True)
     self.opponent = BasicOpponent(weak=weak_opponent)
     # linear force in (x,y)-direction, torque, and shooting
