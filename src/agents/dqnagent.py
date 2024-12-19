@@ -1,12 +1,12 @@
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
-from torch import nn
+from torch import device, nn
 import torch.nn.functional as F
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
-from src.settings import ADAMW, L1, SUPPORTED_LOSS_FUNCTIONS, SUPPORTED_OPTIMIZERS
+from src.util.constants import ADAMW, L1, SUPPORTED_LOSS_FUNCTIONS, SUPPORTED_OPTIMIZERS
 
 
 class QFunction(nn.Module):
@@ -53,7 +53,8 @@ class QFunction(nn.Module):
 
 
 class DQNAgent(Agent):
-    def __init__(self, state_shape: tuple[int, ...], action_size: int, options: dict, optim:dict, hyperparams:dict):
+    def __init__(self, state_shape: tuple[int, ...], action_size: int, options: dict, optim:dict, hyperparams:dict,
+                 device: device):
         super().__init__()
 
         self.isEval = None
@@ -66,24 +67,32 @@ class DQNAgent(Agent):
         self.batch_size = hyperparams["BATCH_SIZE"]
         self.discount = hyperparams["DISCOUNT"]
         self.epsilon = hyperparams["EPSILON"]
+        self.epsilon_min = hyperparams["EPSILON_MIN"]
+        self.epsilon_decay = hyperparams["EPSILON_DECAY"]
+        self.tau = hyperparams["TAU"]
 
         # Options
         self.use_target_net = options["USE_TARGET_NET"]
         self.target_net_update_iter = options["TARGET_NET_UPDATE_ITER"]
+        self.use_soft_updates = options["USE_SOFT_UPDATES"]
+        self.use_gradient_clipping = options["USE_GRADIENT_CLIPPING"]
+        self.gradient_clipping_value = options["GRADIENT_CLIPPING_VALUE"]
 
 
         # Define the Q-Network
         self.Q = QFunction(state_size=state_shape[0],
                            hidden_size=128,
-                           action_size=action_size)
+                           action_size=action_size).to(device)
+        self.Q.to(device)
 
         # If you want to use a target network, it is defined here
         if self.use_target_net:
             self.targetQ = QFunction(state_size=state_shape[0],
                                      hidden_size=128,
                                      action_size=action_size)
-            # Copy the Q network
-            self.updateTargetNet()
+            self.targetQ.to(device)
+            self.targetQ.eval() # Set it always to Eval mode
+            self.updateTargetNet(soft_update=False)  # Copy the Q network
 
         # Define the Optimizer
         optim_name = optim["OPTIM_NAME"]
@@ -102,12 +111,24 @@ class DQNAgent(Agent):
             raise NotImplemented(f"The Loss function '{loss_name}' is not supported! Please choose another one!")
 
 
-    def updateTargetNet(self) -> None:
+    def updateTargetNet(self, soft_update) -> None:
         """
         Updates the target network with the weights of the original one
         """
         assert self.use_target_net == True, "You must use have 'self.use_target == True' to call 'updateTargetNet()'"
-        self.targetQ.load_state_dict(self.Q.state_dict())
+
+        if soft_update:
+            # Soft update of the target network's weights
+            # θ′ ← τ θ + (1 −τ )θ′ where θ′ are the target net weights
+            target_net_state_dict = self.targetQ.state_dict()
+            origin_net_state_dict = self.Q.state_dict()
+            for key in origin_net_state_dict:
+                target_net_state_dict[key] = origin_net_state_dict[key] * self.tau + target_net_state_dict[key] * (
+                            1 - self.tau)
+            self.targetQ.load_state_dict(target_net_state_dict)
+        else:
+            # Do a hard parameter update. Copy all values from the origin to the target network
+            self.targetQ.load_state_dict(self.Q.state_dict())
 
     def optimize(self, memory: ReplayMemory) -> list[float]:
         """
@@ -117,10 +138,11 @@ class DQNAgent(Agent):
         assert self.isEval == False, "Make sure to put the model in training mode before calling the opt. routine"
 
         losses = []
-        for i in range(self.opt_iter):
+        # We start at i=1 to prevent a direct update of the weights
+        for i in range(1, self.opt_iter + 1):
             # Update the target net after some iterations again
             if self.use_target_net and i % self.target_net_update_iter == 0:
-                self.updateTargetNet()
+                self.updateTargetNet(soft_update=self.use_soft_updates)
 
             self.optimizer.zero_grad()
 
@@ -138,7 +160,14 @@ class DQNAgent(Agent):
 
             # Backward step
             loss.backward()
+            # if we want to clip our gradients
+            if self.use_gradient_clipping:
+                # In-place gradient clipping
+                torch.nn.utils.clip_grad_value_(self.Q.parameters(), self.gradient_clipping_value)
             self.optimizer.step()
+
+        # after each optimization, we want to decay epsilon
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
         return losses
 
@@ -172,12 +201,8 @@ class DQNAgent(Agent):
         self.isEval = eval
         if self.isEval:
             self.Q.eval()
-            if self.use_target_net:
-                self.targetQ.eval() # df: should not be necessary, but safe is safe
         else:
             self.Q.train()
-            if self.use_target_net:
-                self.targetQ.train()
 
 
 
