@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "project-rl"
+version = "0.1.0"
+description = ""
+authors = ["Flat <daniel.flat@wps.de>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+torch = "2.2.2"
+numpy = "<2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
