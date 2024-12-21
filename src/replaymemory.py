@@ -1,3 +1,4 @@
+import logging
 import random
 from collections import deque
 from typing import Any
@@ -25,8 +26,11 @@ class ReplayMemory:
         """
         Sample a batch of transitions from the memory.
         """
+
+        # If there are not enough elements in the memory, take all elements of the storage for now
         if batch_size > len(self.storage):
-            raise ValueError("The batch size is larger than the memory elements.")
+            batch_size = len(self.storage)
+            logging.warning("The batch size was larger than the memory elements!")
 
         batch = random.sample(self.storage, batch_size)
         states, actions, rewards, next_states, dones, infos = zip(*batch)
