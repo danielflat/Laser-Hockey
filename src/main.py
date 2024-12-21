@@ -1,14 +1,16 @@
+import logging
 import time
 from itertools import count
 
 import numpy as np
 import torch
-import logging
+import yaml
 
-from src.config import DEVICE, HYPERPARAMS, OPTIMIZER, OPTIONS, SEED, USE_ALGO, USE_ENV
+from src.config import CONFIG, DEVICE, HYPERPARAMS, OPTIMIZER, OPTIONS, SEED, USE_ALGO, USE_ENV
 from src.replaymemory import ReplayMemory
 from src.util.contract import initAgent, initEnv, setupLogging
 from src.util.plotutil import plot_training_metrics
+
 
 def main():
     # Let's first set the seed
@@ -40,8 +42,8 @@ def main():
     episode_losses = []
     episode_epsilon = []
 
-    logging.info(f"Seed: {SEED} | Device: {DEVICE} | Env: {USE_ENV} | Algo: {USE_ALGO} "
-          f"| Optimizer: {OPTIMIZER['OPTIM_NAME']} | Loss: {OPTIONS['LOSS_FUNCTION']}")
+    # Log the Config
+    logging.info(yaml.dump(CONFIG, default_flow_style=False, sort_keys=False, allow_unicode=True))
 
     # Training loop
     logging.info(f"The configuration was valid! Start training 💪")
