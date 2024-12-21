@@ -7,7 +7,8 @@ e.g. optimizers to prevent code duplicates.
 Author: Daniel
 """
 import logging
-from time import asctime
+import time
+from time import asctime, strftime
 
 import gymnasium
 import torch
@@ -52,7 +53,7 @@ def initAgent(use_algo: str, env,
 def setupLogging():
     # Configure logging to output to a file
     logging.basicConfig(
-        filename=get_path(f"output/logging/{asctime()}.txt"),  # Log file name
+        filename=get_path(f"output/logging/{strftime('%Y-%M-%d %H_%M_%S', time.localtime())}.txt"),  # Log file name
         level=logging.INFO,  # Set the logging level
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
