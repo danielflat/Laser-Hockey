@@ -1,6 +1,7 @@
 """
 This is the config file for the training run main.py.
 """
+from time import localtime, strftime
 
 import torch
 
@@ -12,6 +13,8 @@ CONFIG = {
     "USE_TF32": True,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
     "USE_ENV": PENDULUM,  # The used environment
     "USE_ALGO": DQN,  # The used algorithm
+    "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
+    # under which name we want to store the logging results and the checkpoints
     "OPTIONS": {
         "SELF_TRAINING": False,  # If the agent should play against itself like in AlphaGo  # If a target net is used
         "USE_TARGET_NET": True,  # If a target net is used
@@ -27,25 +30,27 @@ CONFIG = {
         # USE the foreach implementation of gradient clipping. Only relevant if 'USE_GRADIENT_CLIPPING' is True
     },
     "HYPERPARAMS": {
-        "NUM_EPISODES": 10,  # How many training episodes should be run?
+        "NUM_EPISODES": 20,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
         "OPT_ITER": 32,  # How many iterations should be done for gradient descent after each episode?
-        "BATCH_SIZE": 128,  # The batch size for doing gradient descent
-        "BUFFER_SIZE": 10000,  # How many items can be stored in the replay buffer?
-        "DISCOUNT": 0.95,  # The discount factor for the TD error
-        "EPSILON": 0.05,  # The initial exploration rate for the epsilon greedy algo
+        "BATCH_SIZE": 256,  # The batch size for doing gradient descent
+        "BUFFER_SIZE": 1000000,  # How many items can be stored in the replay buffer?
+        "DISCOUNT": 0.98,  # The discount factor for the TD error
+        "EPSILON": 1.0,  # The initial exploration rate for the epsilon greedy algo
         "EPSILON_MIN": 0.001,  # Minimum exploration rate
-        "EPSILON_DECAY": 1.0,
+        "EPSILON_DECAY": 0.98,
         # If EPSILON_DECAY_STRATEGY == Linear, it determines either the amount of episodes until `EPSILON_MIN`. If EPSILON_DECAY_STRATEGY == EXPONENTIAL, it determines the rate of decay per episode. (if EXPONENTIAL: =1 in this case means no decay)
         "TAU": 0.001,  # Soft update parameter
         "GRADIENT_CLIPPING_VALUE": 1.0,  # The gradient clipping value
-        "NUMBER_DISCRETE_ACTIONS": 5,  # If None, you use a continuous action space, else you use a discrete action set
+        "NUMBER_DISCRETE_ACTIONS": 9,  # If None, you use a continuous action space, else you use a discrete action set
         "TARGET_NET_UPDATE_FREQ": 20,
         # int: Gives the frequency when to update the target net. If target net is disabled, this param is not relevant. If == 1, you update at every step.
+        "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
+
     },
     "OPTIMIZER": {
         "OPTIM_NAME": ADAM,  # Which optimizer to use
-        "LEARNING_RATE": 3e-4,  # The learning rate for the agent
+        "LEARNING_RATE": 0.01,  # The learning rate for the agent
         "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
         "EPS": 1e-8,  # eps Adam param
         "WEIGHT_DECAY": 1e-2,  # The weight decay rate
@@ -60,6 +65,8 @@ DEVICE = CONFIG["DEVICE"]
 USE_TF32 = CONFIG["USE_TF32"]
 USE_ENV = CONFIG["USE_ENV"]
 USE_ALGO = CONFIG["USE_ALGO"]
+MODEL_NAME = CONFIG["MODEL_NAME"]
+
 OPTIONS = CONFIG["OPTIONS"]
 HYPERPARAMS = CONFIG["HYPERPARAMS"]
 OPTIMIZER = CONFIG["OPTIMIZER"]

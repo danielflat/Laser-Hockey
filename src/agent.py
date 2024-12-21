@@ -1,6 +1,6 @@
-import torch
 from abc import ABC, abstractmethod
 
+import torch
 from torch import nn
 
 from src.replaymemory import ReplayMemory
@@ -22,6 +22,13 @@ class Agent(ABC):
         """
         Set the Agent in training or evaluation mode
         :param eval: If true = eval mode, False = training mode
+        """
+        pass
+
+    @abstractmethod
+    def saveModel(self, fileName: str) -> None:
+        """
+        Saves the model parameters of the agent.
         """
         pass
 

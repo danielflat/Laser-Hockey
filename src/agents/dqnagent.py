@@ -132,10 +132,6 @@ class DQNAgent(Agent):
         losses = []
         # We start at i=1 to prevent a direct update of the weights
         for i in range(1, self.opt_iter + 1):
-            # Update the target net after some iterations again
-            if self.use_target_net and i % self.target_net_update_freq == 0:
-                self.updateTargetNet(soft_update=self.use_soft_updates)
-
             self.optimizer.zero_grad()
 
             state, action, reward, next_state, done, info = memory.sample(self.batch_size)
@@ -157,6 +153,10 @@ class DQNAgent(Agent):
                 # In-place gradient clipping
                 torch.nn.utils.clip_grad_value_(parameters=self.Q.parameters(), clip_value=self.gradient_clipping_value, foreach=self.use_clip_foreach)
             self.optimizer.step()
+
+            # Update the target net after some iterations again
+            if self.use_target_net and i % self.target_net_update_freq == 0:
+                self.updateTargetNet(soft_update=self.use_soft_updates)
 
         # after each optimization, we want to decay epsilon
         self.adjust_epsilon(episode_i)
@@ -195,6 +195,13 @@ class DQNAgent(Agent):
             self.Q.eval()
         else:
             self.Q.train()
+
+    def saveModel(self, fileName: str) -> None:
+        """
+        Saves the model parameters of the agent.
+        """
+        torch.save(self.Q.state_dict(), fileName)
+
 
     def adjust_epsilon(self, episode_i: int) -> None:
         """

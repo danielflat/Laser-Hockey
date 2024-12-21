@@ -7,14 +7,13 @@ e.g. optimizers to prevent code duplicates.
 Author: Daniel
 """
 import logging
-import time
-from time import strftime
 
 import gymnasium
 from torch import device
 
 import hockey.hockey_env as h_env
 from src.agents.dqnagent import DQNAgent
+from src.config import MODEL_NAME
 from src.util.constants import DQN, HOCKEY, SUPPORTED_ENVIRONMENTS
 from src.util.directoryutil import get_path
 from src.util.discreteactionmapper import DiscreteActionWrapper
@@ -54,7 +53,7 @@ def setupLogging():
     Configure logging to output to a file
     """
     logging.basicConfig(
-        filename=get_path(f"output/logging/{strftime('%Y-%M-%d %H_%M_%S', time.localtime())}.txt"),  # Log file name
+        filename=get_path(f"output/logging/{MODEL_NAME}.txt"),  # Log file name
         level=logging.INFO,  # Set the logging level
         format='%(asctime)s - %(levelname)s - %(message)s'
     )

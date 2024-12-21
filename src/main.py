@@ -6,9 +6,10 @@ import numpy as np
 import torch
 import yaml
 
-from src.config import CONFIG, DEVICE, HYPERPARAMS, OPTIMIZER, OPTIONS, SEED, USE_ALGO, USE_ENV
+from src.config import CONFIG, DEVICE, HYPERPARAMS, MODEL_NAME, OPTIMIZER, OPTIONS, SEED, USE_ALGO, USE_ENV
 from src.replaymemory import ReplayMemory
 from src.util.contract import initAgent, initEnv, setupLogging
+from src.util.directoryutil import get_path
 from src.util.plotutil import plot_training_metrics
 
 
@@ -89,6 +90,10 @@ def main():
         losses = agent.optimize(memory=memory, episode_i=i_training)
         # clear the memory
         # memory.clear()
+
+        # after some time, we save a checkpoint of our model
+        if (i_training % HYPERPARAMS["CHECKPOINT_ITER"] == 0):
+            agent.saveModel(get_path(f"output/checkpoints/{MODEL_NAME}_{i_training:05}.pth"))
 
         # some statistic magic
         t_end = time.time()
