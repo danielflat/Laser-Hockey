@@ -13,6 +13,7 @@ L1 = "L1"
 SMOOTHL1 = "SmoothL1"
 LINEAR = "Linear"
 EXPONENTIAL = "Exponential"
+HUMAN = "human"
 SUPPORTED_ENVIRONMENTS = {
     HOCKEY,
     PENDULUM,

@@ -19,14 +19,14 @@ from src.util.directoryutil import get_path
 from src.util.discreteactionmapper import DiscreteActionWrapper
 
 
-def initEnv(use_env: str, number_discrete_actions: int):
+def initEnv(use_env: str, render_mode: str, number_discrete_actions: int):
     if use_env not in SUPPORTED_ENVIRONMENTS:
         Exception(f"The environment '{use_env}' is not supported! Please choose another one!")
 
     if use_env == HOCKEY:
         env =  h_env.HockeyEnv()
     else:
-        env =  gymnasium.make(use_env)
+        env = gymnasium.make(use_env, render_mode=render_mode)
 
     # if we use a discrete action space, we have to discrete the env before
     if number_discrete_actions is not None and number_discrete_actions > 0:

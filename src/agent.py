@@ -32,6 +32,13 @@ class Agent(ABC):
         """
         pass
 
+    @abstractmethod
+    def loadModel(self, file_name: str) -> None:
+        """
+        Loads the model parameters of the agent.
+        """
+        pass
+
     def initOptim(self, optim: dict, parameters) -> torch.optim:
         """
         Initialize the optimizer based on the config.py

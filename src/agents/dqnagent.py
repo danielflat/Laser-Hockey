@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import torch
 from torch import device, nn
@@ -12,11 +14,11 @@ class QFunction(nn.Module):
         super().__init__()
 
         self.network = nn.Sequential(
-            nn.Linear(state_size, hidden_size),
+            nn.Linear(state_size, 64),
             nn.LeakyReLU(),
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(64, 32),
             nn.LeakyReLU(),
-            nn.Linear(hidden_size, action_size),
+            nn.Linear(32, action_size),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -201,6 +203,14 @@ class DQNAgent(Agent):
         Saves the model parameters of the agent.
         """
         torch.save(self.Q.state_dict(), fileName)
+        logging.info(f"Q network weights saved successfully!")
+
+    def loadModel(self, file_name: str) -> None:
+        """
+        Loads the model parameters of the agent.
+        """
+        self.Q.load_state_dict(torch.load(file_name))
+        logging.info(f"Q network weights loaded successfully!")
 
 
     def adjust_epsilon(self, episode_i: int) -> None:

@@ -13,6 +13,7 @@ CONFIG = {
     "USE_TF32": True,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
     "USE_ENV": PENDULUM,  # The used environment
     "USE_ALGO": DQN,  # The used algorithm
+    "RENDER_MODE": None,  # The render mode. Supported: None or HUMAN
     "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
     # under which name we want to store the logging results and the checkpoints
     "OPTIONS": {
@@ -65,6 +66,7 @@ DEVICE = CONFIG["DEVICE"]
 USE_TF32 = CONFIG["USE_TF32"]
 USE_ENV = CONFIG["USE_ENV"]
 USE_ALGO = CONFIG["USE_ALGO"]
+RENDER_MODE = CONFIG["RENDER_MODE"]
 MODEL_NAME = CONFIG["MODEL_NAME"]
 
 OPTIONS = CONFIG["OPTIONS"]

@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import yaml
 
-from src.config import CONFIG, DEVICE, HYPERPARAMS, MODEL_NAME, OPTIMIZER, OPTIONS, SEED, USE_ALGO, USE_ENV
+from src.config import CONFIG, DEVICE, HYPERPARAMS, MODEL_NAME, OPTIMIZER, OPTIONS, RENDER_MODE, SEED, USE_ALGO, USE_ENV
 from src.replaymemory import ReplayMemory
 from src.util.contract import initAgent, initEnv, setupLogging
 from src.util.directoryutil import get_path
@@ -24,7 +24,7 @@ def main():
         torch.set_float32_matmul_precision("high")
 
     # Initialize the environment
-    env = initEnv(USE_ENV, HYPERPARAMS["NUMBER_DISCRETE_ACTIONS"])
+    env = initEnv(USE_ENV, RENDER_MODE, HYPERPARAMS["NUMBER_DISCRETE_ACTIONS"])
 
     # Get some priors regarding the environment
     #state_space_shape: tuple[int, ...] = env.observation_space.shape
