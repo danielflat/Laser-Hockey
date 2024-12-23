@@ -22,7 +22,7 @@ class ReplayMemory:
         """
         self.storage.append((state, action, reward, next_state, done, info))
 
-    def sample(self, batch_size: int) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, list[Any]]:
+    def sample(self, batch_size: int, randomly: bool) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, list[Any]]:
         """
         Sample a batch of transitions from the memory.
         """
@@ -32,7 +32,12 @@ class ReplayMemory:
             batch_size = len(self.storage)
             logging.warning("The batch size was larger than the memory elements!")
 
-        batch = random.sample(self.storage, batch_size)
+        if randomly:
+            # Random batch
+            batch = random.sample(self.storage, batch_size)
+        else:
+            # Sequential batch
+            batch = [self.storage[i] for i in range(batch_size)]
         states, actions, rewards, next_states, dones, infos = zip(*batch)
 
         # Convert them to the right shapes
