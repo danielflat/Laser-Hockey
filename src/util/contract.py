@@ -9,19 +9,33 @@ Author: Daniel
 import logging
 
 import gymnasium
+import numpy as np
+import torch
 from torch import device
 
 import hockey.hockey_env as h_env
 from src.agents.dqnagent import DQNAgent
+from src.agents.ppoagent import PPOAgent
 from src.config import MODEL_NAME
-from src.util.constants import DQN, HOCKEY, SUPPORTED_ENVIRONMENTS
+from src.util.constants import DQN, HOCKEY, PPO, SUPPORTED_ENVIRONMENTS, SUPPORTED_RENDER_MODES
 from src.util.directoryutil import get_path
 from src.util.discreteactionmapper import DiscreteActionWrapper
 
 
+def initSeed(seed: int | None, device: device):
+    if seed is not None:
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        if device == "cuda":
+            torch.cuda.manual_seed(seed)
+    else:
+        logging.warning("No seed was set!")
+
 def initEnv(use_env: str, render_mode: str, number_discrete_actions: int):
     if use_env not in SUPPORTED_ENVIRONMENTS:
-        Exception(f"The environment '{use_env}' is not supported! Please choose another one!")
+        raise Exception(f"The environment '{use_env}' is not supported! Please choose another one!")
+    if render_mode not in SUPPORTED_RENDER_MODES:
+        raise Exception(f"The render mode '{render_mode}' is not supported! Please choose another one!")
 
     if use_env == HOCKEY:
         env =  h_env.HockeyEnv()
@@ -44,6 +58,11 @@ def initAgent(use_algo: str, env,
         state_space_shape: tuple[int, ...] = env.observation_space.shape
         action_size: int = env.action_space.n
         return DQNAgent(state_shape=state_space_shape, action_size=action_size, options=options, optim=optim, hyperparams=hyperparams, device=device)
+    elif use_algo == PPO:
+        state_space_shape: tuple[int, ...] = env.observation_space.shape
+        action_size: int = env.action_space.n
+        return PPOAgent(observation_size=state_space_shape[0], action_size=action_size, options=options, optim=optim,
+                        hyperparams=hyperparams, device=device)
     else:
         raise Exception(f"The algorithm '{use_algo}' is not supported! Please choose another one!")
 

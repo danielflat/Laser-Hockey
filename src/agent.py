@@ -10,7 +10,7 @@ from src.util.constants import ADAM, ADAMW, L1, SMOOTHL1, SUPPORTED_LOSS_FUNCTIO
 class Agent(ABC):
 
     @abstractmethod
-    def act(self, x:torch.Tensor) -> int:
+    def act(self, x: torch.Tensor) -> int:
         pass
 
     @abstractmethod
@@ -18,7 +18,7 @@ class Agent(ABC):
         pass
 
     @abstractmethod
-    def setMode(self, eval:bool = False) -> None:
+    def setMode(self, eval: bool = False) -> None:
         """
         Set the Agent in training or evaluation mode
         :param eval: If true = eval mode, False = training mode
@@ -26,7 +26,7 @@ class Agent(ABC):
         pass
 
     @abstractmethod
-    def saveModel(self, fileName: str) -> None:
+    def saveModel(self, model_name: str, iteration: int) -> None:
         """
         Saves the model parameters of the agent.
         """

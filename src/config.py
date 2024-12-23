@@ -5,14 +5,14 @@ from time import localtime, strftime
 
 import torch
 
-from src.util.constants import ADAM, DQN, EXPONENTIAL, PENDULUM, SMOOTHL1
+from src.util.constants import ADAM, EXPONENTIAL, PENDULUM, PPO, SMOOTHL1
 
 CONFIG = {
     "SEED": 24,  # The seed that we want to use
     "DEVICE": torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # On which machine is it running?
     "USE_TF32": True,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
     "USE_ENV": PENDULUM,  # The used environment
-    "USE_ALGO": DQN,  # The used algorithm
+    "USE_ALGO": PPO,  # The used algorithm. Either DQN or PPO
     "RENDER_MODE": None,  # The render mode. Supported: None or HUMAN
     "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
     # under which name we want to store the logging results and the checkpoints
@@ -31,27 +31,28 @@ CONFIG = {
         # USE the foreach implementation of gradient clipping. Only relevant if 'USE_GRADIENT_CLIPPING' is True
     },
     "HYPERPARAMS": {
-        "NUM_EPISODES": 20,  # How many training episodes should be run?
+        "NUM_EPISODES": 600,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
-        "OPT_ITER": 32,  # How many iterations should be done for gradient descent after each episode?
+        "OPT_ITER": 100,  # How many iterations should be done for gradient descent after each episode?
         "BATCH_SIZE": 256,  # The batch size for doing gradient descent
-        "BUFFER_SIZE": 1000000,  # How many items can be stored in the replay buffer?
-        "DISCOUNT": 0.98,  # The discount factor for the TD error
-        "EPSILON": 1.0,  # The initial exploration rate for the epsilon greedy algo
+        "BUFFER_SIZE": 10000,  # How many items can be stored in the replay buffer?
+        "DISCOUNT": 0.95,  # The discount factor for the TD error
+        "EPSILON": 1,  # The initial exploration rate for the epsilon greedy algo
         "EPSILON_MIN": 0.001,  # Minimum exploration rate
-        "EPSILON_DECAY": 0.98,
+        "EPSILON_DECAY": 0.985,
         # If EPSILON_DECAY_STRATEGY == Linear, it determines either the amount of episodes until `EPSILON_MIN`. If EPSILON_DECAY_STRATEGY == EXPONENTIAL, it determines the rate of decay per episode. (if EXPONENTIAL: =1 in this case means no decay)
         "TAU": 0.001,  # Soft update parameter
         "GRADIENT_CLIPPING_VALUE": 1.0,  # The gradient clipping value
-        "NUMBER_DISCRETE_ACTIONS": 9,  # If None, you use a continuous action space, else you use a discrete action set
+        "NUMBER_DISCRETE_ACTIONS": 10,  # If None, you use a continuous action space, else you use a discrete action set
         "TARGET_NET_UPDATE_FREQ": 20,
         # int: Gives the frequency when to update the target net. If target net is disabled, this param is not relevant. If == 1, you update at every step.
         "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
+        "EPS_CLIP": 0.1,  # the clipping hyperparam for the ppo algo
 
     },
     "OPTIMIZER": {
         "OPTIM_NAME": ADAM,  # Which optimizer to use
-        "LEARNING_RATE": 0.01,  # The learning rate for the agent
+        "LEARNING_RATE": 3e-4,  # The learning rate for the agent
         "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
         "EPS": 1e-8,  # eps Adam param
         "WEIGHT_DECAY": 1e-2,  # The weight decay rate

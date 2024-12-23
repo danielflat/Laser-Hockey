@@ -8,17 +8,13 @@ import yaml
 
 from src.config import CONFIG, DEVICE, HYPERPARAMS, MODEL_NAME, OPTIMIZER, OPTIONS, RENDER_MODE, SEED, USE_ALGO, USE_ENV
 from src.replaymemory import ReplayMemory
-from src.util.contract import initAgent, initEnv, setupLogging
-from src.util.directoryutil import get_path
+from src.util.contract import initAgent, initEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics
 
 
 def main():
     # Let's first set the seed
-    torch.manual_seed(SEED)
-    np.random.seed(SEED)
-    if DEVICE == "cuda":
-        torch.cuda.manual_seed(SEED)
+    initSeed(seed=SEED, device=DEVICE)
 
     if OPTIONS["USE_TF32"]: # activate TF32. Might not be available for old GPUs
         torch.set_float32_matmul_precision("high")
@@ -43,7 +39,7 @@ def main():
     episode_losses = []
     episode_epsilon = []
 
-    # Log the Config
+    # Log the Config.py
     logging.info(yaml.dump(CONFIG, default_flow_style=False, sort_keys=False, allow_unicode=True))
 
     # Training loop
@@ -93,7 +89,7 @@ def main():
 
         # after some time, we save a checkpoint of our model
         if (i_training % HYPERPARAMS["CHECKPOINT_ITER"] == 0):
-            agent.saveModel(get_path(f"output/checkpoints/{MODEL_NAME}_{i_training:05}.pth"))
+            agent.saveModel(MODEL_NAME, i_training)
 
         # some statistic magic
         t_end = time.time()

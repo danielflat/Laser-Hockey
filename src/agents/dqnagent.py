@@ -1,4 +1,5 @@
 import logging
+import os
 
 import numpy as np
 import torch
@@ -7,6 +8,7 @@ from torch import device, nn
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util.constants import EXPONENTIAL, LINEAR
+from src.util.directoryutil import get_path
 
 
 class QFunction(nn.Module):
@@ -136,7 +138,7 @@ class DQNAgent(Agent):
         for i in range(1, self.opt_iter + 1):
             self.optimizer.zero_grad()
 
-            state, action, reward, next_state, done, info = memory.sample(self.batch_size)
+            state, action, reward, next_state, done, info = memory.sample(self.batch_size, randomly=True)
 
             # Forward step
             if self.USE_BF_16:
@@ -198,11 +200,17 @@ class DQNAgent(Agent):
         else:
             self.Q.train()
 
-    def saveModel(self, fileName: str) -> None:
+    def saveModel(self, model_name: str, iteration: int) -> None:
         """
         Saves the model parameters of the agent.
         """
-        torch.save(self.Q.state_dict(), fileName)
+
+        directory = get_path(f"output/checkpoints/{model_name}")
+        file_path = os.path.join(directory, f"{model_name}_{iteration:05}.pth")
+
+        # Ensure the directory exists
+        os.makedirs(directory, exist_ok=True)
+        torch.save(self.Q.state_dict(), file_path)
         logging.info(f"Q network weights saved successfully!")
 
     def loadModel(self, file_name: str) -> None:
