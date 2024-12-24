@@ -42,8 +42,10 @@
 #         return x
 #
 # class DDPGAgent(Agent):
-#     def __init__(self, state_shape: int, action_size: int, options: dict, optim:dict, hyperparams:dict,
+#     def __init__(self, state_shape: int, action_size: int, options: dict, optim: dict, hyperparams: dict,
 #                  device: device):
+#         super().__init__(hyperparams, options)
+#
 #         self.isEval = None
 #
 #         self.state_shape = state_shape

@@ -3,11 +3,10 @@ import os
 
 import numpy as np
 import torch
-from torch import device, nn
+from torch import nn
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
-from src.util.constants import EXPONENTIAL, LINEAR
 from src.util.directoryutil import get_path
 
 
@@ -54,36 +53,14 @@ class QFunction(nn.Module):
 
 
 class DQNAgent(Agent):
-    def __init__(self, state_shape: tuple[int, ...], action_size: int, options: dict, optim:dict, hyperparams:dict,
-                 device: device):
-        super().__init__()
+    def __init__(self, state_shape: tuple[int, ...], action_size: int, agent_settings: dict, dqn_settings: dict,
+                 device: torch.device):
+        super().__init__(agent_settings = agent_settings, device = device)
 
         self.isEval = None
 
         self.state_shape = state_shape
         self.action_size = action_size
-
-        # Hyperparams
-        self.opt_iter = hyperparams["OPT_ITER"]
-        self.batch_size = hyperparams["BATCH_SIZE"]
-        self.discount = hyperparams["DISCOUNT"]
-        self.epsilon = hyperparams["EPSILON"]
-        self.epsilon_start = hyperparams["EPSILON"]
-        self.epsilon_min = hyperparams["EPSILON_MIN"]
-        self.epsilon_decay = hyperparams["EPSILON_DECAY"]
-        self.gradient_clipping_value = hyperparams["GRADIENT_CLIPPING_VALUE"]
-        self.target_net_update_freq = hyperparams["TARGET_NET_UPDATE_FREQ"]
-        self.tau = hyperparams["TAU"]
-
-        # Options
-        self.use_target_net = options["USE_TARGET_NET"]
-        self.use_soft_updates = options["USE_SOFT_UPDATES"]
-        self.use_gradient_clipping = options["USE_GRADIENT_CLIPPING"]
-        self.epsilon_decay_strategy = options["EPSILON_DECAY_STRATEGY"]
-        self.device: device = device
-        self.use_clip_foreach = options["USE_CLIP_FOREACH"]
-        self.USE_BF_16 = options["USE_BF16"]
-
 
         # Define the Q-Network
         self.Q = QFunction(state_size=state_shape[0],
@@ -101,10 +78,10 @@ class DQNAgent(Agent):
             self.updateTargetNet(soft_update=False)  # Copy the Q network
 
         # Define the Optimizer
-        self.optimizer = self.initOptim(optim=optim, parameters=self.Q.parameters())
+        self.optimizer = self.initOptim(optim = agent_settings["OPTIMIZER"], parameters = self.Q.parameters())
 
         # Define Loss function
-        self.criterion = self.initLossFunction(loss_name = options["LOSS_FUNCTION"])
+        self.criterion = self.initLossFunction(loss_name = agent_settings["LOSS_FUNCTION"])
 
 
     def updateTargetNet(self, soft_update) -> None:
@@ -116,12 +93,8 @@ class DQNAgent(Agent):
         if soft_update:
             # Soft update of the target network's weights
             # θ′ ← τ θ + (1 −τ )θ′ where θ′ are the target net weights
-            target_net_state_dict = self.targetQ.state_dict()
-            origin_net_state_dict = self.Q.state_dict()
-            for key in origin_net_state_dict:
-                target_net_state_dict[key] = origin_net_state_dict[key] * self.tau + target_net_state_dict[key] * (
-                            1 - self.tau)
-            self.targetQ.load_state_dict(target_net_state_dict)
+            for target_param, param in zip(self.targetQ.parameters(), self.Q.parameters()):
+                target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
         else:
             # Do a hard parameter update. Copy all values from the origin to the target network
             self.targetQ.load_state_dict(self.Q.state_dict())
@@ -152,6 +125,7 @@ class DQNAgent(Agent):
 
             # Backward step
             loss.backward()
+
             # if we want to clip our gradients
             if self.use_gradient_clipping:
                 # In-place gradient clipping
@@ -175,19 +149,37 @@ class DQNAgent(Agent):
         :param state: The state
         :return: The action TODO: Yet only as discrete variable available
         """
+        with torch.no_grad():
+            # In evaluation mode, we always exploit
+            if self.isEval:
+                return self.Q.greedyAction(state.unsqueeze(0)).item()
 
-        # In evaluation mode, we always exploit
-        if self.isEval:
-            return self.Q.greedyAction(state.unsqueeze(0)).item()
+            # In training mode, use epsilon greedy action sampling
+            rdn = np.random.random()
+            if rdn <= self.epsilon:
+                # Exploration
+                return np.random.randint(low = 0, high = self.action_size)
+            else:
+                # Exploitation
+                return self.Q.greedyAction(state.unsqueeze(0)).item()
 
-        # In training mode, use epsilon greedy action sampling
-        rdn = np.random.random()
-        if rdn <= self.epsilon:
-            # Exploration
-            return np.random.randint(low = 0, high = self.action_size)
+    def forward_pass(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,
+                     done: torch.Tensor) -> torch.Tensor:
+        # Step 01: Calculate the predicted q value
+        predicted_q_value = self.Q.QValue(state, action)
+
+        # Step 02: Calculate the td target
+        td_target = self.calc_td_target(reward, done, next_state)
+
+        # Step 03: Finally, we calculate the loss
+        loss = self.criterion(predicted_q_value, td_target)
+        return loss
+
+    def calc_td_target(self, reward: torch.Tensor, done: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
+        if self.use_target_net:
+            return reward + (1 - done) * self.discount * self.targetQ.maxQValue(next_state)
         else:
-            # Exploitation
-            return self.Q.greedyAction(state.unsqueeze(0)).item()
+            return reward + (1 - done) * self.discount * self.Q.maxQValue(next_state)
 
     def setMode(self, eval=False) -> None:
         """
@@ -219,38 +211,6 @@ class DQNAgent(Agent):
         """
         self.Q.load_state_dict(torch.load(file_name))
         logging.info(f"Q network weights loaded successfully!")
-
-
-    def adjust_epsilon(self, episode_i: int) -> None:
-        """
-        Here, we decay epsilon w.r.t. the number of run episodes
-        :param episode_i: The ith episode
-        """
-        if self.epsilon_decay_strategy == LINEAR:
-            new_candidate = np.maximum(self.epsilon_min, self.epsilon_start - (episode_i/self.epsilon_decay) * (self.epsilon_start - self.epsilon_min))
-            self.epsilon = new_candidate.item()
-        elif self.epsilon_decay_strategy == EXPONENTIAL:
-            new_candidate = np.maximum(self.epsilon_min, self.epsilon_start * (self.epsilon_decay ** episode_i))
-            self.epsilon = new_candidate.item()
-        else:
-            raise NotImplementedError(f"The epsilon decay strategy '{self.epsilon_decay_strategy}' is not supported! Please choose another one!")
-
-    def calc_td_target(self, reward: torch.Tensor, done: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
-        if self.use_target_net:
-            return reward + (1 - done) * self.discount * self.targetQ.maxQValue(next_state)
-        else:
-            return reward + (1 - done) * self.discount * self.Q.maxQValue(next_state)
-
-    def forward_pass(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor, done: torch.Tensor) -> torch.Tensor:
-        # Step 01: Calculate the predicted q value
-        predicted_q_value = self.Q.QValue(state, action)
-
-        # Step 02: Calculate the td target
-        td_target = self.calc_td_target(reward, done, next_state)
-
-        # Step 03: Finally, we calculate the loss
-        loss = self.criterion(predicted_q_value, td_target)
-        return loss
 
 
 

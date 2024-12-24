@@ -16,8 +16,7 @@ from torch import device
 import hockey.hockey_env as h_env
 from src.agents.dqnagent import DQNAgent
 from src.agents.ppoagent import PPOAgent
-from src.config import MODEL_NAME
-from src.util.constants import DQN, HOCKEY, PPO, SUPPORTED_ENVIRONMENTS, SUPPORTED_RENDER_MODES
+from src.util.constants import DQN_ALGO, HOCKEY, PPO_ALGO, SUPPORTED_ENVIRONMENTS, SUPPORTED_RENDER_MODES
 from src.util.directoryutil import get_path
 from src.util.discreteactionmapper import DiscreteActionWrapper
 
@@ -50,29 +49,31 @@ def initEnv(use_env: str, render_mode: str, number_discrete_actions: int):
 
 
 def initAgent(use_algo: str, env,
-              options: dict, optim:dict, hyperparams:dict, device: device):
+              agent_settings: dict, dqn_settings: dict, ppo_settings: dict, device: device):
     """
     Initialize the agent based on the config
     """
-    if use_algo == DQN:
+
+    if use_algo == DQN_ALGO:
         state_space_shape: tuple[int, ...] = env.observation_space.shape
         action_size: int = env.action_space.n
-        return DQNAgent(state_shape=state_space_shape, action_size=action_size, options=options, optim=optim, hyperparams=hyperparams, device=device)
-    elif use_algo == PPO:
+        return DQNAgent(state_shape = state_space_shape, action_size = action_size, agent_settings = agent_settings,
+                        dqn_settings = dqn_settings, device = device)
+    elif use_algo == PPO_ALGO:
         state_space_shape: tuple[int, ...] = env.observation_space.shape
         action_size: int = env.action_space.n
-        return PPOAgent(observation_size=state_space_shape[0], action_size=action_size, options=options, optim=optim,
-                        hyperparams=hyperparams, device=device)
+        return PPOAgent(observation_size = state_space_shape[0], action_size = action_size,
+                        agent_settings = agent_settings, ppo_settings = ppo_settings, device = device)
     else:
         raise Exception(f"The algorithm '{use_algo}' is not supported! Please choose another one!")
 
 
-def setupLogging():
+def setupLogging(model_name: str):
     """
     Configure logging to output to a file
     """
     logging.basicConfig(
-        filename=get_path(f"output/logging/{MODEL_NAME}.txt"),  # Log file name
+        filename = get_path(f"output/logging/{model_name}.txt"),  # Log file name
         level=logging.INFO,  # Set the logging level
         format='%(asctime)s - %(levelname)s - %(message)s'
     )

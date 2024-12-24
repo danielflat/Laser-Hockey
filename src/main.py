@@ -6,33 +6,49 @@ import numpy as np
 import torch
 import yaml
 
-from src.config import CONFIG, DEVICE, HYPERPARAMS, MODEL_NAME, OPTIMIZER, OPTIONS, RENDER_MODE, SEED, USE_ALGO, USE_ENV
 from src.replaymemory import ReplayMemory
+from src.settings import AGENT_SETTINGS, DQN_SETTINGS, MAIN_SETTINGS, PPO_SETTINGS, SETTINGS
 from src.util.contract import initAgent, initEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics
 
+SEED = MAIN_SETTINGS["SEED"]
+DEVICE = MAIN_SETTINGS["DEVICE"]
+USE_TF32 = MAIN_SETTINGS["USE_TF32"]
+USE_ENV = MAIN_SETTINGS["USE_ENV"]
+RENDER_MODE = MAIN_SETTINGS["RENDER_MODE"]
+NUMBER_DISCRETE_ACTIONS = MAIN_SETTINGS["NUMBER_DISCRETE_ACTIONS"]
+USE_ALGO = MAIN_SETTINGS["USE_ALGO"]
+MODEL_NAME = MAIN_SETTINGS["MODEL_NAME"]
+BUFFER_SIZE = MAIN_SETTINGS["BUFFER_SIZE"]
+NUM_TRAINING_EPISODES = MAIN_SETTINGS["NUM_TRAINING_EPISODES"]
+NUM_TEST_EPISODES = MAIN_SETTINGS["NUM_TEST_EPISODES"]
+EPISODE_UPDATE_ITER = MAIN_SETTINGS["EPISODE_UPDATE_ITER"]
+SHOW_PLOTS = MAIN_SETTINGS["SHOW_PLOTS"]
+CHECKPOINT_ITER = MAIN_SETTINGS["CHECKPOINT_ITER"]
 
 def main():
     # Let's first set the seed
     initSeed(seed=SEED, device=DEVICE)
 
-    if OPTIONS["USE_TF32"]: # activate TF32. Might not be available for old GPUs
+    # If you want to use TF32 instead of Float 32, you can activate it here. Might not be available for old GPUs
+    if USE_TF32:
         torch.set_float32_matmul_precision("high")
 
     # Initialize the environment
-    env = initEnv(USE_ENV, RENDER_MODE, HYPERPARAMS["NUMBER_DISCRETE_ACTIONS"])
+    env = initEnv(USE_ENV, RENDER_MODE, NUMBER_DISCRETE_ACTIONS)
 
     # Get some priors regarding the environment
-    #state_space_shape: tuple[int, ...] = env.observation_space.shape
+    # state_space_shape: tuple[int, ...] = env.observation_space.shape
 
     # Choose which algorithm to pick to initialize the agent
-    agent = initAgent(USE_ALGO, env=env, options=OPTIONS, optim=OPTIMIZER, hyperparams=HYPERPARAMS, device=DEVICE)
+    agent = initAgent(USE_ALGO, env = env, agent_settings = AGENT_SETTINGS, dqn_settings = DQN_SETTINGS,
+                      ppo_settings = PPO_SETTINGS, device = DEVICE)
 
     # Init the memory
-    memory = ReplayMemory(capacity=HYPERPARAMS["BUFFER_SIZE"])
+    memory = ReplayMemory(capacity = BUFFER_SIZE)
 
     # Setup Logging
-    setupLogging()
+    setupLogging(model_name = MODEL_NAME)
 
     episode_durations = []
     episode_rewards = []
@@ -40,14 +56,14 @@ def main():
     episode_epsilon = []
 
     # Log the Config.py
-    logging.info(yaml.dump(CONFIG, default_flow_style=False, sort_keys=False, allow_unicode=True))
+    logging.info(yaml.dump(SETTINGS, default_flow_style = False, sort_keys = False, allow_unicode = True))
 
     # Training loop
     logging.info(f"The configuration was valid! Start training 💪")
     agent.setMode(eval=False)  # Set the agent in training mode
     state, info = env.reset(seed=SEED)
 
-    for i_training in range(1, HYPERPARAMS["NUM_EPISODES"] + 1):
+    for i_training in range(1, NUM_TRAINING_EPISODES + 1):
         # We track for each episode how high the reward was
         t_start = time.time()
         total_reward = 0
@@ -82,30 +98,35 @@ def main():
                 episode_durations.append(step)
                 break
 
-        # after an episode is done, we want to optimize our agent
-        losses = agent.optimize(memory=memory, episode_i=i_training)
-        # clear the memory
-        # memory.clear()
+        # after each episode, we want to log some statistics
+        episode_rewards.append(total_reward)
+
+        # After some episodes and collecting some data, we optimize the agent
+        if i_training % EPISODE_UPDATE_ITER == 0:
+            losses = agent.optimize(memory = memory, episode_i = i_training)
+
+            # After optimization, we can log some *more* statistics
+            t_end = time.time()
+            episode_time = t_end - t_start
+            episode_losses.append(losses)
+            episode_epsilon.append(agent.epsilon)
+            logging.info(
+                f"Training Iter: {i_training} | Req. Steps: {episode_durations[i_training - 1]} | Total reward: {total_reward:.4f} |"
+                f" Avg. Loss: {np.array(losses).mean():.4f} | Epsilon: {agent.epsilon:.4f} | Req. Time: {episode_time:.4f} sec.")
+
+        # Plot every 100 episodes
+        if SHOW_PLOTS and i_training % 100 == 0:
+            plot_training_metrics(episode_durations=episode_durations, episode_rewards=episode_rewards,
+                                  episode_losses = episode_losses, current_episode = i_training,
+                                  episode_update_iter = EPISODE_UPDATE_ITER)
 
         # after some time, we save a checkpoint of our model
-        if (i_training % HYPERPARAMS["CHECKPOINT_ITER"] == 0):
+        if (i_training % CHECKPOINT_ITER == 0):
             agent.saveModel(MODEL_NAME, i_training)
 
-        # some statistic magic
-        t_end = time.time()
-        episode_time = t_end - t_start
-        episode_rewards.append(total_reward)
-        episode_losses.append(losses)
-        episode_epsilon.append(agent.epsilon)
-        logging.info(
-            f"Training Iter: {i_training} | Req. Steps: {episode_durations[i_training - 1]} | Total reward: {total_reward:.4f} |"
-            f" Avg. Loss: {np.array(losses).mean():.4f} | Epsilon: {agent.epsilon:.4f} | Req. Time: {episode_time:.4f} sec.")
-        if OPTIONS["SHOW_PLOTS"]:
-            plot_training_metrics(episode_durations=episode_durations, episode_rewards=episode_rewards,
-                                  episode_losses=episode_losses, current_episode=i_training)
-
         # reset the environment
-        state, info = env.reset()
+        state, info = env.reset(
+            seed = SEED + i_training)  # by resetting always a different but predetermined seed, we ensure the reproducibility of the results
 
     # Now, we do some testing
     logging.info("Training is done! Now we will do some testing!")
@@ -113,7 +134,7 @@ def main():
     test_durations = []
     test_rewards = []
 
-    for i_test in range(1, HYPERPARAMS["NUM_TEST_EPISODES"] + 1):
+    for i_test in range(1, NUM_TEST_EPISODES + 1):
         # We track for each episode how high the reward was
         total_reward = 0
 
@@ -147,8 +168,8 @@ def main():
         # reset the environment
         state, info = env.reset()
     logging.info(f"Tests done! "
-          f"Durations average: {np.array(test_durations).mean():.4f} | Durations std. dev: {np.array(test_durations).std():.4f} | Durations variance: {np.array(test_durations).var():.4f} | "
-          f"Reward average: {np.array(test_rewards).mean():.4f} | Reward std. dev: {np.array(test_rewards).std():.4f} | Reward variance: {np.array(test_rewards).var():.4f}")
+                 f"Durations average: {np.array(test_durations).mean():.4f} | Durations std. dev: {np.array(test_durations).std():.4f} | Durations variance: {np.array(test_durations).var():.4f} | "
+                 f"Reward average: {np.array(test_rewards).mean():.4f} | Reward std. dev: {np.array(test_rewards).std():.4f} | Reward variance: {np.array(test_rewards).var():.4f}")
     logging.info(f"Finished! 🚀")
 
 

@@ -3,8 +3,8 @@ from itertools import count
 import numpy as np
 import torch
 
-from src.config import DEVICE, HYPERPARAMS, OPTIMIZER, OPTIONS
-from src.util.constants import DQN, HUMAN, PENDULUM
+from src.settings import AGENT_SETTINGS, DQN_SETTINGS, PPO_SETTINGS
+from src.util.constants import DQN_ALGO, HUMAN, PENDULUM
 from src.util.contract import initAgent, initEnv, initSeed
 from src.util.directoryutil import get_path
 
@@ -12,26 +12,26 @@ from src.util.directoryutil import get_path
 TEST_CHECK_POINT_NAME = "24-12-22 08_15_22"  # which model do you want to test
 TEST_ITERATION = "00600"  # Which iteration do you want to test
 TEST_USE_ENV = PENDULUM
-TEST_USE_ALGO = DQN
+TEST_USE_ALGO = DQN_ALGO
 TEST_NUMBER_DISCRETE_ACTIONS = 10
-TEST_SEED = None
-TEST_RENDER_MODE = HUMAN
+TEST_SEED = 0
+TEST_RENDER_MODE = HUMAN  # None or HUMAN
 TEST_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-TEST_ITERATIONS = 10
+TEST_ITERATIONS = 1000
 
 if __name__ == '__main__':
-    initSeed(seed=TEST_SEED, device=DEVICE)
+    initSeed(seed = TEST_SEED, device = TEST_DEVICE)
     print(f"Test seed: {TEST_SEED}, Test Device: {TEST_DEVICE}")
 
     env = initEnv(TEST_USE_ENV, TEST_RENDER_MODE, TEST_NUMBER_DISCRETE_ACTIONS)
 
-    agent = initAgent(use_algo=TEST_USE_ALGO, env=env, options=OPTIONS, optim=OPTIMIZER, hyperparams=HYPERPARAMS,
-                      device=DEVICE)
+    agent = initAgent(use_algo = TEST_USE_ALGO, env = env, agent_settings = AGENT_SETTINGS, dqn_settings = DQN_SETTINGS,
+                      ppo_settings = PPO_SETTINGS, device = TEST_DEVICE)
     check_point = get_path(f"output/checkpoints/{TEST_CHECK_POINT_NAME}/{TEST_CHECK_POINT_NAME}_{TEST_ITERATION}.pth")
-    agent.setMode(eval=True)
-    agent.loadModel(file_name=check_point)
+    agent.setMode(eval = True)
+    agent.loadModel(file_name = check_point)
 
-    state, info = env.reset(seed=TEST_SEED)
+    state, info = env.reset(seed = TEST_SEED)
     env.render()
 
     episode_steps = []
@@ -42,7 +42,7 @@ if __name__ == '__main__':
         total_reward = 0
 
         for _ in count():
-            state = torch.tensor(state, device=DEVICE)
+            state = torch.tensor(state, device = TEST_DEVICE)
             action = agent.act(state)
 
             next_step, reward, terminated, truncated, info = env.step(action)
@@ -58,7 +58,7 @@ if __name__ == '__main__':
                 episode_rewards.append(total_reward)
                 print(f"Episode: {i_test} | Total steps: {total_steps} | Total reward: {total_reward}")
 
-                state, info = env.reset()
+                state, info = env.reset(seed = TEST_SEED + i_test)  # for reproducibility
                 break
     print(f"Tests done! "
           f"Durations average: {np.array(episode_steps).mean():.4f} | Durations std. dev: {np.array(episode_steps).std():.4f} | Durations variance: {np.array(episode_steps).var():.4f} | "

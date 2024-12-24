@@ -6,12 +6,13 @@ Author: Daniel
 HOCKEY = "Hockey-v0"
 PENDULUM = "Pendulum-v1"
 CARTPOLE = "CartPole-v1"
-DQN = "DQN"
-PPO = "PPO"
+DQN_ALGO = "DQN_Algo"
+PPO_ALGO = "PPO_Algo"
 ADAMW = "AdamW"
 ADAM = "Adam"
 L1 = "L1"
 SMOOTHL1 = "SmoothL1"
+MSELOSS = "MSELoss"
 LINEAR = "Linear"
 EXPONENTIAL = "Exponential"
 HUMAN = "human"
@@ -21,8 +22,8 @@ SUPPORTED_ENVIRONMENTS = {
     CARTPOLE
 }
 SUPPORTED_ALGORITHMS = {
-    DQN,
-    PPO
+    DQN_ALGO,
+    PPO_ALGO
 }
 SUPPORTED_OPTIMIZERS = {
     ADAMW,
@@ -30,7 +31,8 @@ SUPPORTED_OPTIMIZERS = {
 }
 SUPPORTED_LOSS_FUNCTIONS = {
     L1,
-    SMOOTHL1
+    SMOOTHL1,
+    MSELOSS
 }
 SUPPORTED_EPSILON_DECAY_STRATEGIES = {
     LINEAR,
