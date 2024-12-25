@@ -1,9 +1,14 @@
+import logging
+import os
+
+import numpy as np
 import torch
 from torch import device, nn
 from torch.distributions import Categorical
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
+from src.util.directoryutil import get_path
 
 
 class ActorCritic(nn.Module):
@@ -11,104 +16,77 @@ class ActorCritic(nn.Module):
         super().__init__()
         # It yields the prob. distribution of the action space given the state the given state
         self.actor = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.LeakyReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(64, 64),
             nn.LeakyReLU(),
-            nn.Linear(128, action_shape),
+            nn.Linear(64, action_shape),
             nn.Softmax(dim=-1))
 
         # It yields the state function for the given state
         self.critic = nn.Sequential(
-            nn.Linear(input_shape, 128),
+            nn.Linear(input_shape, 64),
             nn.LeakyReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(64, 64),
             nn.LeakyReLU(),
-            nn.Linear(128, 1))
+            nn.Linear(64, 1))
 
-    def flow_actor(self, x: torch.Tensor):
-        x = self.actor(x)
-        return x
-
-    def flow_critic(self, x: torch.Tensor):
-        x = self.critic(x)
-        return x
+    def greedyAction(self, state: torch.Tensor) -> torch.Tensor:
+        with torch.no_grad():
+            action_probs = self.actor(state)
+            greedyAction = torch.argmax(action_probs, dim = -1)
+            return greedyAction
 
 
 class PPOAgent(Agent):
-    def __init__(self, observation_size, action_size, hyperparams: dict, options: dict, optim: dict, device: device):
-        super().__init__()
+    def __init__(self, observation_size, action_size, agent_settings: dict, ppo_settings: dict, device: device):
+        super().__init__(agent_settings = agent_settings, device = device)
 
-        # Hyperparams
-        self.opt_iter = hyperparams["OPT_ITER"]
-        self.batch_size = hyperparams["BATCH_SIZE"]
-        self.discount = hyperparams["DISCOUNT"]
-        self.epsilon = hyperparams["EPSILON"]
-        self.epsilon_start = hyperparams["EPSILON"]
-        self.epsilon_min = hyperparams["EPSILON_MIN"]
-        self.epsilon_decay = hyperparams["EPSILON_DECAY"]
-        self.gradient_clipping_value = hyperparams["GRADIENT_CLIPPING_VALUE"]
-        self.target_net_update_freq = hyperparams["TARGET_NET_UPDATE_FREQ"]
-        self.tau = hyperparams["TAU"]
-        self.eps_clip = hyperparams["EPS_CLIP"]
+        self.observation_size = observation_size
+        self.action_size = action_size
 
-        # Options
-        self.use_target_net = options["USE_TARGET_NET"]
-        self.use_soft_updates = options["USE_SOFT_UPDATES"]
-        self.use_gradient_clipping = options["USE_GRADIENT_CLIPPING"]
-        self.epsilon_decay_strategy = options["EPSILON_DECAY_STRATEGY"]
-        self.device: device = device
-        self.use_clip_foreach = options["USE_CLIP_FOREACH"]
-        self.USE_BF_16 = options["USE_BF16"]
+        self.eps_clip = ppo_settings["EPS_CLIP"]
 
         self.policy_net = ActorCritic(input_shape=observation_size, action_shape=action_size)
         self.policy_net.to(device)
 
-        self.old_policy_net = ActorCritic(input_shape=observation_size, action_shape=action_size)
-        self.old_policy_net.to(device)
+        self.policy_old = ActorCritic(input_shape = observation_size, action_shape = action_size)
+        self.policy_old.to(device)
+        self.policy_old.eval()  # set old policy net always to eval mode
+        self.policy_old.load_state_dict(self.policy_net.state_dict())  # copy the network
 
-        # set old policy net always to eval mode
-        self.old_policy_net.eval()
+        self.optimizer = self.initOptim(optim = agent_settings["OPTIMIZER"], parameters = self.policy_net.parameters())
 
-        # copy the network
-        self.old_policy_net.load_state_dict(self.policy_net.state_dict())
-
-        self.optimizer = self.initOptim(optim=optim, parameters=self.policy_net.parameters())
-
-        self.criterion = nn.MSELoss()
+        self.criterion = self.initLossFunction(loss_name = agent_settings["LOSS_FUNCTION"])
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
         """
-                This function is used to train and optimize the Q Network with the help of the replay memory.
-                :return: A list of all losses during optimization
-                """
+        This function is used to train and optimize the Q Network with the help of the replay memory.
+        :return: A list of all losses during optimization
+        """
         assert self.isEval == False, "Make sure to put the agent in training mode before calling the opt. routine"
 
         losses = []
 
         # Since we do Monte Carlo Estimation, we sample the whole trajectory of the episode
         batch_size = len(memory)
-        state, action, reward, next_state, done, info = memory.sample(batch_size, randomly=False)
+        state, action, reward, _, done, _ = memory.sample(batch_size, randomly = False)
 
-        # Next, we have to discount the reward w.t.r. the discount factor
-        exponents = torch.arange(len(reward), dtype=torch.float32)
-        discount_factors = torch.pow(self.discount, exponents)[:, None]
-        reward = reward * discount_factors
+        # We have to discount the reward w.r.t. the discount factors
+        discounted_reward = self.discount_reward(reward, done)
 
-        # Now, lets squeeze some inputs
+        # Now, lets squeeze the action tensor
         action = action.squeeze(1)
-        reward = reward.squeeze(1)
+
+        # First, we need the logprobs of the old policy
+        old_log_probs = self.logprobs(state, action)
 
         # We start at i=1 to prevent a direct update of the weights
         for i in range(1, self.opt_iter + 1):
             self.optimizer.zero_grad()
 
             # Forward step
-            if self.USE_BF_16:
-                with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
-                    loss = self.forward_pass(state, action, reward, next_state, done)
-            else:
-                loss = self.forward_pass(state, action, reward, next_state, done)
+            loss = self.forward_pass(state, action, discounted_reward, old_log_probs)
 
             # Track the loss
             losses.append(loss.item())
@@ -123,32 +101,37 @@ class PPOAgent(Agent):
                                                 foreach=self.use_clip_foreach)
             self.optimizer.step()
 
-            # Update the target net after some iterations again
-            if self.use_target_net and i % self.target_net_update_freq == 0:
-                self.updateOldPolicyNet(soft_update=self.use_soft_updates)
 
         # in PPO, we have to clear the memory after each optimization loop, since
         memory.clear()
+
+        # adjust epsilon after each optimization
+        self.adjust_epsilon(episode_i)
+
+        # Update the old policy net
+        self.updateOldPolicyNet(soft_update = self.use_soft_updates)
 
         return losses
 
     def act(self, state: torch.Tensor) -> int:
         with torch.no_grad():
-            # if you
             if self.isEval:
-                # TODO
-                action_probs = self.policy_net.flow_actor(state)
-                categorical = Categorical(action_probs)
-                action = categorical.sample()
-
-                return action.item()
+                # if you are in eval mode, get the greedy Action
+                greedy_action = self.policy_net.greedyAction(state)
+                return greedy_action.item()
             else:
-                # take the actions w.r.t. the old policy
-                action_probs = self.old_policy_net.flow_actor(state)
-                categorical = Categorical(action_probs)
-                action = categorical.sample()
+                # In training mode, use epsilon greedy action sampling
+                rdn = np.random.random()
+                if rdn <= self.epsilon:
+                    # Exploration. Take a random action
+                    return np.random.randint(low = 0, high = self.action_size)
+                else:
+                    # Exploitation. take the actions w.r.t. the old policy
+                    action_probs = self.policy_old.actor(state)
+                    categorical = Categorical(action_probs)
+                    action = categorical.sample()
 
-                return action.item()
+                    return action.item()
 
     def setMode(self, eval=False) -> None:
         """
@@ -161,39 +144,64 @@ class PPOAgent(Agent):
         else:
             self.policy_net.train()
 
-    def forward_pass(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,
-                     done: torch.Tensor) -> torch.Tensor:
-        # Step 01: First, we need the logprobs of the old policy
-        old_log_probs = self.logprobs(self.old_policy_net, state)
-
-        # Step 02: Evaluate the actions
+    def forward_pass(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor,
+                     old_log_probs: torch.Tensor) -> torch.Tensor:
+        # Step 01: Evaluate the actions
         logprobs, state_values, dist_entropy = self.evaluate(state, action)
 
-        # Step 03: Compute the ratio
-        ratios = torch.exp(logprobs - old_log_probs.detach())
+        # since we have to be careful with softmax to sum up to 1, we cannot have these steps in the bfloat16 mode
+        if self.USE_BF_16:
+            with torch.autocast(device_type = self.device.type, dtype = torch.bfloat16):
+                # Step 02: Compute the ratio
+                ratios = torch.exp(logprobs - old_log_probs.detach())
 
-        # Step 04: Compute the advantages
-        advantages = reward - state_values.detach()
+                # Step 03: Compute the advantages
+                advantages = reward - state_values.detach()
 
-        # Step 05: Compute the surrogate loss
-        objective = ratios * advantages
-        objective_clipped = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
+                # Step 04: Compute the surrogate loss
+                objective = ratios * advantages
+                objective_clipped = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
 
-        # Step 06: Finally the loss
-        loss = -torch.min(objective, objective_clipped) + 0.5 * self.criterion(state_values,
-                                                                               reward) - 0.01 * dist_entropy
+                # Step 05: Finally the loss
+                loss = -torch.min(objective, objective_clipped) + 0.5 * self.criterion(state_values,
+                                                                                       reward) - 0.01 * dist_entropy
 
-        return loss.mean()
+                return loss.mean()
+        else:
+            # Step 02: Compute the ratio
+            ratios = torch.exp(logprobs - old_log_probs.detach())
 
-    def logprobs(self, net, state):
-        action_probs = net.flow_actor(state)
+            # Step 03: Compute the advantages
+            advantages = reward - state_values.detach()
+
+            # Step 04: Compute the surrogate loss
+            objective = ratios * advantages
+            objective_clipped = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
+
+            # Step 05: Finally the loss
+            loss = -torch.min(objective, objective_clipped) + 0.5 * self.criterion(state_values,
+                                                                                   reward) - 0.01 * dist_entropy
+            return loss.mean()
+
+    def logprobs(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        """
+        Here we calculate the log probabilities of the given action and the state. Can be performed on a single tensor or on a *batch*!
+        :param state: The state
+        :param action: the action
+        :return: the log prob as a torch.Tensor
+        """
+
+        # Step 01: Get the action probabilities
+        action_probs = self.policy_old.actor(state)
+
+        # Step 02: Create a Categorical distribution
         dist = Categorical(action_probs)
-        action = dist.sample()
 
+        # Step 03: Return the log prob of the action given the state
         return dist.log_prob(action)
 
     def evaluate(self, state, action):
-        action_probs = self.policy_net.flow_actor(state)
+        action_probs = self.policy_net.actor(state)
         dist = Categorical(action_probs)
 
         # Step 01: First, get the log prob of the action given the state
@@ -204,16 +212,10 @@ class PPOAgent(Agent):
 
         # Step 03: Finally, we acquire the value of the state.
         # We squeeze it to have (batch_size,) shape
-        state_value = self.policy_net.flow_critic(state).squeeze(1)
+        state_value = self.policy_net.critic(state).squeeze(1)
 
         return action_logprobs, state_value, dist_entropy
 
-    # TODO:
-    def saveModel(self, model_name: str, iteration: int) -> None:
-        pass
-
-    def loadModel(self, file_name: str) -> None:
-        pass
 
     def updateOldPolicyNet(self, soft_update: bool):
         """
@@ -224,12 +226,42 @@ class PPOAgent(Agent):
         if soft_update:
             # Soft update of the target network's weights
             # θ′ ← τ θ + (1 −τ )θ′ where θ′ are the target net weights
-            target_net_state_dict = self.old_policy_net.state_dict()
-            origin_net_state_dict = self.policy_net.state_dict()
-            for key in origin_net_state_dict:
-                target_net_state_dict[key] = origin_net_state_dict[key] * self.tau + target_net_state_dict[key] * (
-                        1 - self.tau)
-            self.old_policy_net.load_state_dict(target_net_state_dict)
+            for target_param, param in zip(self.policy_old.parameters(), self.policy_net.parameters()):
+                target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
         else:
             # Do a hard parameter update. Copy all values from the origin to the target network
-            self.old_policy_net.load_state_dict(self.policy_net.state_dict())
+            self.policy_old.load_state_dict(self.policy_net.state_dict())
+
+    def discount_reward(self, rewards, dones):
+        discounted_rewards = []
+        discounted_reward = 0
+        for reward, done in zip(reversed(rewards), reversed(dones)):
+            if done:
+                discounted_reward = 0
+            discounted_reward = reward + (self.discount * discounted_reward)
+            discounted_rewards.insert(0, discounted_reward)
+
+        # Normalizing the rewards:
+        discounted_rewards = torch.tensor(discounted_rewards, dtype = torch.float32).to(self.device)
+        discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-5)
+        return discounted_rewards
+
+    def saveModel(self, model_name: str, iteration: int) -> None:
+        """
+        Saves the model parameters of the agent.
+        """
+
+        directory = get_path(f"output/checkpoints/{model_name}")
+        file_path = os.path.join(directory, f"{model_name}_{iteration:05}.pth")
+
+        # Ensure the directory exists
+        os.makedirs(directory, exist_ok = True)
+        torch.save(self.policy_net.state_dict(), file_path)
+        logging.info(f"Q network weights saved successfully!")
+
+    def loadModel(self, file_name: str) -> None:
+        """
+        Loads the model parameters of the agent.
+        """
+        self.policy_net.load_state_dict(torch.load(file_name))
+        logging.info(f"Q network weights loaded successfully!")

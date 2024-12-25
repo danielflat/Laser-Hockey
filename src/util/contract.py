@@ -30,7 +30,8 @@ def initSeed(seed: int | None, device: device):
     else:
         logging.warning("No seed was set!")
 
-def initEnv(use_env: str, render_mode: str, number_discrete_actions: int):
+
+def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int):
     if use_env not in SUPPORTED_ENVIRONMENTS:
         raise Exception(f"The environment '{use_env}' is not supported! Please choose another one!")
     if render_mode not in SUPPORTED_RENDER_MODES:
