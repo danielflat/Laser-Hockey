@@ -5,7 +5,7 @@ from time import localtime, strftime
 
 import torch
 
-from src.util.constants import ADAM, EXPONENTIAL, MSELOSS, PENDULUM, PPO_ALGO, TD3_ALGO, SAC_ALGO, SMOOTHL1
+from src.util.constants import ADAM, EXPONENTIAL, MSELOSS, PENDULUM, PPO_ALGO, TD3_ALGO, SAC_ALGO, SMOOTHL1, HUMAN
 
 SETTINGS = {
     # The settings for the main.py
@@ -17,10 +17,10 @@ SETTINGS = {
         "RENDER_MODE": None,  # The render mode. Supported: None or HUMAN
         "NUMBER_DISCRETE_ACTIONS": None,  # If None, you use a continuous action space, else you use a discrete action set
         "USE_ALGO": SAC_ALGO,  # The used algorithm. Supported: DQN_ALGO, PPO_ALGO, TD3_ALGO
-        "BUFFER_SIZE": 100000,  # How many items can be stored in the replay buffer?
+        "BUFFER_SIZE": 10_000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
-        "NUM_TRAINING_EPISODES": 2000,  # How many training episodes should be run?
+        "NUM_TRAINING_EPISODES": 100_000,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
@@ -36,23 +36,23 @@ SETTINGS = {
             "LEARNING_RATE": 3e-4,  # The learning rate for the agent
             "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
             "EPS": 1e-8,  # eps Adam param
-            "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+            "WEIGHT_DECAY": 0.0,  # The weight decay rate
             "USE_FUSION": torch.cuda.is_available()
             # if we have CUDA, we can use the fusion implementation of Adam -> Faster
         },
         "LOSS_FUNCTION": SMOOTHL1,  # Which optimizer to use?
         "USE_BF16": True,  # Uses BF16 in forward pass or not. Makes it faster, but you have lower precision
         "SELF_TRAINING": False,  # If the agent should play against itself like in AlphaGo
-        "OPT_ITER": 10,  # How many iterations should be done of gradient descent when calling agent.optimize()?
-        "BATCH_SIZE": 256,  # The batch size for doing gradient descent
+        "OPT_ITER": 1,  # How many iterations should be done of gradient descent when calling agent.optimize()?
+        "BATCH_SIZE": 64,  # The batch size for doing gradient descent
         "DISCOUNT": 0.99,  # The discount factor for the TD error
 
         # TARGET NET STRATEGY
         "USE_TARGET_NET": True,  # If a target net is used
-        "USE_SOFT_UPDATES": False,  # If the target network is updated. True = softly, False = hardly
-        "TARGET_NET_UPDATE_FREQ": 10,
+        "USE_SOFT_UPDATES": True,  # If the target network is updated. True = softly, False = hardly
+        "TARGET_NET_UPDATE_FREQ": 1,
         # int: Gives the frequency when to update the target net. If target net is disabled, this param is not relevant. If == 1, you update at every step.
-        "TAU": 0.001,  # Soft update parameter
+        "TAU": 0.005,  # Soft update parameter
 
         # EPSILON GREEDY STRATEGY
         "EPSILON_DECAY_STRATEGY": EXPONENTIAL,
