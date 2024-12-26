@@ -4,7 +4,7 @@
 
 <div style="display: flex; justify-content: space-around;">
     <h5>Daniel Flat</h5>
-    <h5>Eric Ayari</h5>
+    <h5>Erik Ayari</h5>
     <h5>André Pfrommer</h5>
 </div>
 
