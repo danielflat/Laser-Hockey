@@ -5,7 +5,7 @@ from time import localtime, strftime
 
 import torch
 
-from src.util.constants import ADAM, EXPONENTIAL, MSELOSS, PENDULUM, PPO_ALGO, TD3_ALGO, SMOOTHL1
+from src.util.constants import ADAM, EXPONENTIAL, MSELOSS, PENDULUM, PPO_ALGO, TD3_ALGO, SAC_ALGO, SMOOTHL1
 
 SETTINGS = {
     # The settings for the main.py
@@ -16,7 +16,7 @@ SETTINGS = {
         "USE_ENV": PENDULUM,  # The used environment
         "RENDER_MODE": None,  # The render mode. Supported: None or HUMAN
         "NUMBER_DISCRETE_ACTIONS": None,  # If None, you use a continuous action space, else you use a discrete action set
-        "USE_ALGO": TD3_ALGO,  # The used algorithm. Either DQN_ALGO or PPO_ALGO
+        "USE_ALGO": SAC_ALGO,  # The used algorithm. Supported: DQN_ALGO, PPO_ALGO, TD3_ALGO
         "BUFFER_SIZE": 100000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
@@ -78,6 +78,12 @@ SETTINGS = {
     # The specific settings for the TD3 agent
     "TD3": {
         "POLICY_DELAY": 1,  # The delay of the policy optimization 
+    },
+    "SAC": {
+        "LEARN_ALPHA": True, # Whether to learn the temperature alpha
+        "TARGET_ENTROPY": None, # Target entropy for automatic alpha
+        "INIT_ALPHA": 0.2,
+        "HIDDEN_DIM": 256
     }
 }
 
@@ -87,3 +93,4 @@ AGENT_SETTINGS = SETTINGS["AGENT"]
 DQN_SETTINGS = SETTINGS["DQN"]
 PPO_SETTINGS = SETTINGS["PPO"]
 TD3_SETTINGS = SETTINGS["TD3"]
+SAC_SETTINGS = SETTINGS["SAC"]

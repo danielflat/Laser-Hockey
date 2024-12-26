@@ -52,7 +52,7 @@ def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int)
 
 
 def initAgent(use_algo: str, env,
-              agent_settings: dict, dqn_settings: dict, ppo_settings: dict, td3_settings: dict, device: device):
+              agent_settings: dict, dqn_settings: dict, ppo_settings: dict, td3_settings: dict, sac_settings: dict, device: device):
     """
     Initialize the agent based on the config
     """
@@ -72,6 +72,16 @@ def initAgent(use_algo: str, env,
         action_space: tuple[int, ...] = env.action_space
         return TD3Agent(observation_size = state_space_shape[0], action_space = action_space,
                         agent_settings = agent_settings, td3_settings = td3_settings, device = device)
+    elif use_algo == SAC_ALGO:
+        state_space_shape: tuple[int, ...] = env.observation_space.shape
+        action_space: tuple[int, ...] = env.action_space
+        return SoftActorCritic(
+            state_dim = state_space_shape[0],
+            action_dim = action_space,
+            agent_settings = agent_settings,
+            device = device,
+            sac_settings = sac_settings
+        )
     else:
         raise Exception(f"The algorithm '{use_algo}' is not supported! Please choose another one!")
 
