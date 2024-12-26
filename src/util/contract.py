@@ -7,7 +7,7 @@ e.g. optimizers to prevent code duplicates.
 Author: Daniel
 """
 import logging
-
+import os
 import gymnasium
 import numpy as np
 import torch
@@ -17,7 +17,8 @@ import hockey.hockey_env as h_env
 from src.agents.dqnagent import DQNAgent
 from src.agents.ppoagent import PPOAgent
 from src.agents.td3agent import TD3Agent
-from src.util.constants import DQN_ALGO, HOCKEY, PPO_ALGO, TD3_ALGO, SUPPORTED_ENVIRONMENTS, SUPPORTED_RENDER_MODES
+from src.agents.sac import SoftActorCritic
+from src.util.constants import DQN_ALGO, HOCKEY, PPO_ALGO, TD3_ALGO, SAC_ALGO, SUPPORTED_ENVIRONMENTS, SUPPORTED_RENDER_MODES
 from src.util.directoryutil import get_path
 from src.util.discreteactionmapper import DiscreteActionWrapper
 
@@ -79,8 +80,14 @@ def setupLogging(model_name: str):
     """
     Configure logging to output to a file
     """
+    # First, build the log file path
+    log_path = get_path(f"output/logging/{model_name}.txt")
+    
+    # Make sure the directory exists; create it if necessary
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
     logging.basicConfig(
-        filename = get_path(f"output/logging/{model_name}.txt"),  # Log file name
+        filename = log_path,  # Log file name
         level=logging.INFO,  # Set the logging level
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
