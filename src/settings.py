@@ -22,7 +22,7 @@ SETTINGS = {
         # under which name we want to store the logging results and the checkpoints
         "NUM_TRAINING_EPISODES": 2000,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
-        "EPISODE_UPDATE_ITER": 10,
+        "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
         "SHOW_PLOTS": True,  # If you want to plot statistics after each episode
         "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
@@ -57,7 +57,7 @@ SETTINGS = {
         # EPSILON GREEDY STRATEGY
         "EPSILON_DECAY_STRATEGY": EXPONENTIAL,
         # What kind of strategy should be picked in order to decay epsilon during training
-        "EPSILON": 3,  # The initial exploration rate for the epsilon greedy algo
+        "EPSILON": 1,  # The initial exploration rate for the epsilon greedy algo
         "EPSILON_MIN": 0.01,  # Minimum exploration rate
         "EPSILON_DECAY": 0.997,
         # If EPSILON_DECAY_STRATEGY == Linear, it determines either the amount of episodes until `EPSILON_MIN`. If EPSILON_DECAY_STRATEGY == EXPONENTIAL, it determines the rate of decay per episode. (if EXPONENTIAL: =1 in this case means no decay)
