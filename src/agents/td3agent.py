@@ -10,8 +10,6 @@ from src.replaymemory import ReplayMemory
 from src.util.constants import EXPONENTIAL, LINEAR
 from src.util.directoryutil import get_path
 
-to_torch = lambda x: torch.from_numpy(x.astype(np.float32))
-
 class QFunction(nn.Module):
     def __init__(self, state_size, hidden_sizes, action_size):
         super().__init__()
@@ -51,16 +49,18 @@ class PolicyFunction(nn.Module):
         
     def forward(self, state: torch.Tensor) -> torch.Tensor:
         """
-        Calculates the Policy values over all actions for the given state
+        Calculates the Actor values over all actions for the given state
         """
         return self.network(state)
     
     def predict(self, x: torch.Tensor) -> np.ndarray:
         """
-        Calculates the detached Policy Value as a numpy array 
+        Calculates the detached Actor Value as a numpy array 
         """
         with torch.no_grad():
-            return self.forward(x).numpy()
+            action = self.forward(x).squeeze().cpu().numpy()
+            action = np.expand_dims(action, axis=0)
+            return action
 
 
 class TD3Agent(Agent):
@@ -79,23 +79,20 @@ class TD3Agent(Agent):
         self.Q2 = QFunction(state_size=self.state_shape,
                             hidden_sizes=[128, 128],
                             action_size=self.action_space.shape[0]).to(device)
-        
         self.policy = PolicyFunction(state_size=self.state_shape,
                                     hidden_sizes=[128, 128, 64],
                                     action_size=self.action_space.shape[0]).to(device)
-        
-        if self.use_target_net:
-            self.targetQ1 = QFunction(state_size=self.state_shape,
-                                        hidden_sizes=[128, 128],
-                                        action_size=self.action_space.shape[0]).to(device)
-            self.targetQ2 = QFunction(state_size=self.state_shape,
-                                        hidden_sizes=[128, 128],
-                                        action_size=self.action_space.shape[0]).to(device)
-            self.policy_target = PolicyFunction(state_size=self.state_shape,
-                                                hidden_sizes=[128, 128, 64],
-                                                action_size=self.action_space.shape[0]).to(device)
-        
-            self.updateTargetNets(soft_update=self.use_soft_updates) # Copy the Networks
+        self.targetQ1 = QFunction(state_size=self.state_shape,
+                                    hidden_sizes=[128, 128],
+                                    action_size=self.action_space.shape[0]).to(device)
+        self.targetQ2 = QFunction(state_size=self.state_shape,
+                                    hidden_sizes=[128, 128],
+                                    action_size=self.action_space.shape[0]).to(device)
+        self.policy_target = PolicyFunction(state_size=self.state_shape,
+                                            hidden_sizes=[128, 128, 64],
+                                            action_size=self.action_space.shape[0]).to(device)
+    
+        self.updateTargetNets(soft_update=self.use_soft_updates) # Copy the Networks
         
         #Initializing the optimizers, TO DO: Use different learning rates for Q and Policy
         self.optimizer_q1 = self.initOptim(optim=agent_settings["OPTIMIZER"], parameters=self.Q1.parameters()) 
@@ -131,6 +128,7 @@ class TD3Agent(Agent):
         2. Calculate the Q values for the next state and next action using both target Q networks
         3. Calculate the TD Target by bootstrapping the minimum of the two Q networks
         """
+        to_torch = lambda x: torch.from_numpy(x.astype(np.float32))
         
         #Exploration noise
         noise = np.clip(
@@ -152,16 +150,6 @@ class TD3Agent(Agent):
             
             #3. Bootstrapping the minimum of the two Q networks
             return reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2) 
-        
-        else:
-            next_action = torch.clamp(
-                self.policy.forward(next_state) + to_torch(noise), 
-                min=to_torch(self.action_space.low),
-                max=to_torch(self.action_space.high))
-            
-            q_prime1 = self.Q1.forward(next_state, next_action)
-            q_prime2 = self.Q2.forward(next_state, next_action)
-            return reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2)
         
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
@@ -230,15 +218,16 @@ class TD3Agent(Agent):
         if self.isEval:
             self.Q1.eval()
             self.Q2.eval()
+            self.policy.eval()
             self.targetQ1.eval()
             self.targetQ2.eval()
             self.policy_target.eval()
         else:
             self.Q1.train()
             self.Q2.train()
+            self.policy.train()
             self.targetQ1.train()
             self.targetQ2.train()
-            self.policy.train()
             self.policy_target.train()
             
     
@@ -246,21 +235,39 @@ class TD3Agent(Agent):
         """
         Saves the model parameters of the agent.
         """
+        checkpoint = {
+            "actor": self.policy.state_dict(),
+            "critic1": self.Q1.state_dict(),
+            "critic2": self.Q2.state_dict(),
+            "critic1_target": self.targetQ1.state_dict(),
+            "critic2_target": self.targetQ2.state_dict(),
+            "iteration": iteration
+        }
 
         directory = get_path(f"output/checkpoints/{model_name}")
         file_path = os.path.join(directory, f"{model_name}_{iteration:05}.pth")
-
-        # Ensure the directory exists
         os.makedirs(directory, exist_ok = True)
-        torch.save((self.Q1.state_dict(), self.Q2.state_dict, self.policy.state_dict()), file_path)
-        logging.info(f"Q  and Policy network weights saved successfully!")
+        torch.save(checkpoint, file_path)
+        print(f"Actor and Critic weights saved successfully!")
 
     def loadModel(self, file_name: str) -> None:
         """
         Loads the model parameters of the agent.
         """
-        self.policy_net.load_state_dict(torch.load(file_name))
-        logging.info(f"Q and Policy network weights loaded successfully!")
+        checkpoint = torch.load(file_name, map_location=self.device)
+        self.policy.load_state_dict(checkpoint["actor"])
+        self.Q1.load_state_dict(checkpoint["critic1"])
+        self.Q2.load_state_dict(checkpoint["critic2"])
+        self.targetQ1.load_state_dict(checkpoint["critic1_target"])
+        self.targetQ2.load_state_dict(checkpoint["critic2_target"])
+        self.log_alpha = torch.tensor(
+            checkpoint["log_alpha"],
+            dtype=torch.float32,
+            requires_grad=True,
+            device=self.device
+        )
+        self.alpha = self.log_alpha.exp().detach().item()
+        print(f"Model loaded from {file_name}")
     
     def updateTargetNets(self, soft_update: bool) -> None:
         """
