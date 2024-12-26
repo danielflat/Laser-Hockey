@@ -13,6 +13,8 @@ from src.settings import AGENT_SETTINGS, DQN_SETTINGS, MAIN_SETTINGS, PPO_SETTIN
 from src.util.contract import initAgent, initEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics
 
+from src.util.constants import SAC_ALGO
+
 SEED = MAIN_SETTINGS["SEED"]
 DEVICE = MAIN_SETTINGS["DEVICE"]
 USE_TF32 = MAIN_SETTINGS["USE_TF32"]
@@ -27,6 +29,7 @@ NUM_TEST_EPISODES = MAIN_SETTINGS["NUM_TEST_EPISODES"]
 EPISODE_UPDATE_ITER = MAIN_SETTINGS["EPISODE_UPDATE_ITER"]
 SHOW_PLOTS = MAIN_SETTINGS["SHOW_PLOTS"]
 CHECKPOINT_ITER = MAIN_SETTINGS["CHECKPOINT_ITER"]
+BATCH_SIZE = AGENT_SETTINGS["BATCH_SIZE"]
 
 def main():
     # Let's first set the seed
@@ -73,6 +76,8 @@ def main():
         # Convert state to torch
         state = torch.from_numpy(state).to(DEVICE)
 
+        losses = np.array([])
+
         for step in count(start=1):
             # choose the action
             action = agent.act(state)
@@ -84,14 +89,23 @@ def main():
             total_reward += reward
 
             # Convert quantities into tensors
-            action = torch.tensor(action, device=DEVICE, dtype=torch.int64)
+            if USE_ALGO == SAC_ALGO:
+                action = torch.tensor(action, device=DEVICE, dtype=torch.float32)
+            else:
+                action = torch.tensor(action, device=DEVICE, dtype=torch.int64)
             reward = torch.tensor(reward, device=DEVICE, dtype=torch.float32)
             done = torch.tensor(terminated or truncated, device=DEVICE,
                                 dtype=torch.int)  # to be able to do arithmetics with the done signal, we need an int
             next_state = torch.tensor(next_state, device=DEVICE)
 
+
             # Store this transition in the memory
             memory.push(state, action, reward, next_state, done, info)
+
+            if USE_ALGO == SAC_ALGO:
+                if len(memory) >= (100 * BATCH_SIZE):
+                    step_losses = agent.optimize(memory = memory, episode_i = i_training)
+                    losses = np.concatenate((losses, step_losses), axis=0)
 
             # Update the state
             state = next_state
@@ -103,8 +117,17 @@ def main():
         # after each episode, we want to log some statistics
         episode_rewards.append(total_reward)
 
+        if USE_ALGO == SAC_ALGO and len(memory) >= (100 * BATCH_SIZE):
+            t_end = time.time()
+            episode_time = t_end - t_start
+            episode_losses.append(losses)
+            episode_epsilon.append(agent.epsilon)
+            logging.info(
+                f"Training Iter: {i_training} | Req. Steps: {episode_durations[i_training - 1]} | Total reward: {total_reward:.4f} |"
+                f" Avg. Loss: {np.array(losses).mean():.4f} | Epsilon: {agent.epsilon:.4f} | Req. Time: {episode_time:.4f} sec.")
+
         # After some episodes and collecting some data, we optimize the agent
-        if i_training % EPISODE_UPDATE_ITER == 0:
+        if not USE_ALGO == SAC_ALGO and i_training % EPISODE_UPDATE_ITER == 0:
             losses = agent.optimize(memory = memory, episode_i = i_training)
 
             # After optimization, we can log some *more* statistics
@@ -116,8 +139,8 @@ def main():
                 f"Training Iter: {i_training} | Req. Steps: {episode_durations[i_training - 1]} | Total reward: {total_reward:.4f} |"
                 f" Avg. Loss: {np.array(losses).mean():.4f} | Epsilon: {agent.epsilon:.4f} | Req. Time: {episode_time:.4f} sec.")
 
-        # Plot every 100 episodes
-        if SHOW_PLOTS and i_training % 100 == 0:
+        # Plot every 1 episodes
+        if SHOW_PLOTS and i_training % 1 == 0 and len(memory) >= (100 * BATCH_SIZE):
             plot_training_metrics(episode_durations=episode_durations, episode_rewards=episode_rewards,
                                   episode_losses = episode_losses, current_episode = i_training,
                                   episode_update_iter = EPISODE_UPDATE_ITER)
