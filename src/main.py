@@ -3,6 +3,8 @@ import time
 from itertools import count
 
 import numpy as np
+if not hasattr(np, 'bool8'):
+    np.bool8 = np.bool_  # Map bool8 to bool_
 import torch
 import yaml
 
