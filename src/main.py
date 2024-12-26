@@ -7,7 +7,7 @@ import torch
 import yaml
 
 from src.replaymemory import ReplayMemory
-from src.settings import AGENT_SETTINGS, DQN_SETTINGS, MAIN_SETTINGS, PPO_SETTINGS, SETTINGS
+from src.settings import AGENT_SETTINGS, DQN_SETTINGS, MAIN_SETTINGS, PPO_SETTINGS, TD3_SETTINGS, SETTINGS
 from src.util.contract import initAgent, initEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics
 
@@ -42,7 +42,7 @@ def main():
 
     # Choose which algorithm to pick to initialize the agent
     agent = initAgent(USE_ALGO, env = env, agent_settings = AGENT_SETTINGS, dqn_settings = DQN_SETTINGS,
-                      ppo_settings = PPO_SETTINGS, device = DEVICE)
+                      ppo_settings = PPO_SETTINGS, td3_settings = TD3_SETTINGS, device = DEVICE)
 
     # Init the memory
     memory = ReplayMemory(capacity = BUFFER_SIZE)
@@ -127,6 +127,7 @@ def main():
         # reset the environment
         state, info = env.reset(
             seed = SEED + i_training)  # by resetting always a different but predetermined seed, we ensure the reproducibility of the results
+        
 
     # Now, we do some testing
     logging.info("Training is done! Now we will do some testing!")

@@ -16,7 +16,8 @@ from torch import device
 import hockey.hockey_env as h_env
 from src.agents.dqnagent import DQNAgent
 from src.agents.ppoagent import PPOAgent
-from src.util.constants import DQN_ALGO, HOCKEY, PPO_ALGO, SUPPORTED_ENVIRONMENTS, SUPPORTED_RENDER_MODES
+from src.agents.td3agent import TD3Agent
+from src.util.constants import DQN_ALGO, HOCKEY, PPO_ALGO, TD3_ALGO, SUPPORTED_ENVIRONMENTS, SUPPORTED_RENDER_MODES
 from src.util.directoryutil import get_path
 from src.util.discreteactionmapper import DiscreteActionWrapper
 
@@ -50,7 +51,7 @@ def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int)
 
 
 def initAgent(use_algo: str, env,
-              agent_settings: dict, dqn_settings: dict, ppo_settings: dict, device: device):
+              agent_settings: dict, dqn_settings: dict, ppo_settings: dict, td3_settings: dict, device: device):
     """
     Initialize the agent based on the config
     """
@@ -65,6 +66,11 @@ def initAgent(use_algo: str, env,
         action_size: int = env.action_space.n
         return PPOAgent(observation_size = state_space_shape[0], action_size = action_size,
                         agent_settings = agent_settings, ppo_settings = ppo_settings, device = device)
+    elif use_algo == TD3_ALGO:
+        state_space_shape: tuple[int, ...] = env.observation_space.shape
+        action_space: tuple[int, ...] = env.action_space
+        return TD3Agent(observation_size = state_space_shape[0], action_space = action_space,
+                        agent_settings = agent_settings, td3_settings = td3_settings, device = device)
     else:
         raise Exception(f"The algorithm '{use_algo}' is not supported! Please choose another one!")
 

@@ -8,6 +8,7 @@ PENDULUM = "Pendulum-v1"
 CARTPOLE = "CartPole-v1"
 DQN_ALGO = "DQN_Algo"
 PPO_ALGO = "PPO_Algo"
+TD3_ALGO = "TD3_Algo"
 ADAMW = "AdamW"
 ADAM = "Adam"
 L1 = "L1"
@@ -23,7 +24,8 @@ SUPPORTED_ENVIRONMENTS = {
 }
 SUPPORTED_ALGORITHMS = {
     DQN_ALGO,
-    PPO_ALGO
+    PPO_ALGO,
+    TD3_ALGO
 }
 SUPPORTED_OPTIMIZERS = {
     ADAMW,
