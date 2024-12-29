@@ -66,11 +66,14 @@ class PolicyFunction(nn.Module):
 class TD3Agent(Agent):
     def __init__(self, observation_size, action_space, agent_settings: dict, td3_settings: dict, device: device):
         super().__init__(agent_settings = agent_settings, device = device)
+        
         self.state_shape = observation_size
         self.action_space = action_space
+        self.action_low = torch.tensor(action_space.low, dtype=torch.float32, device=self.device)
+        self.action_high = torch.tensor(action_space.high, dtype=torch.float32, device=self.device)
         
         self.policy_delay = td3_settings["POLICY_DELAY"]
-
+        self.noise_clip = td3_settings["NOISE_CLIP"]
 
         # Here we have 2 Q Networks
         self.Q1 = QFunction(state_size=self.state_shape,
@@ -91,8 +94,11 @@ class TD3Agent(Agent):
         self.policy_target = PolicyFunction(state_size=self.state_shape,
                                             hidden_sizes=[128, 128, 64],
                                             action_size=self.action_space.shape[0]).to(device)
-    
-        self.updateTargetNets(soft_update=self.use_soft_updates) # Copy the Networks
+
+        #Copying the weights of the Q and Policy networks to the target networks
+        self.targetQ1.load_state_dict(self.Q1.state_dict())
+        self.targetQ2.load_state_dict(self.Q2.state_dict())
+        self.policy_target.load_state_dict(self.policy.state_dict())
         
         #Initializing the optimizers, TO DO: Use different learning rates for Q and Policy
         self.optimizer_q1 = self.initOptim(optim=agent_settings["OPTIMIZER"], parameters=self.Q1.parameters()) 
@@ -109,16 +115,16 @@ class TD3Agent(Agent):
         In Training mode, we sample an action using actor network and exploration noise
         :param state: The state
         """
-        # In evaluation mode, we always exploit
-        if self.isEval:
-            self.epsilon = 0
-        
-        action_deterministic = self.policy.predict(state)
-        #action squeezed in -1 to 1 via tanh (+ noise)
-        action = action_deterministic + self.epsilon * np.random.normal(size=self.action_space.shape[0])
-        
-        #rescale the action to the action space
-        action = self.action_space.low + (action + 1.0) / 2.0 * (self.action_space.high - self.action_space.low) # resacling into the action space
+        self.policy.eval()
+        with torch.no_grad():
+            #action squeezed in -1 to 1 via tanh (+ noise)
+            action_deterministic = self.policy.forward(state)
+            action = action_deterministic + torch.randn_like(action_deterministic) * self.epsilon
+            action = torch.clamp(action, self.action_low, self.action_high)
+            
+        action = action.squeeze().cpu().numpy()
+
+        action = np.expand_dims(action, axis=0)
         return action
 
     def calc_td_target(self, reward: torch.Tensor, done: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
@@ -128,28 +134,27 @@ class TD3Agent(Agent):
         2. Calculate the Q values for the next state and next action using both target Q networks
         3. Calculate the TD Target by bootstrapping the minimum of the two Q networks
         """
-        to_torch = lambda x: torch.from_numpy(x.astype(np.float32))
         
-        #Exploration noise
-        noise = np.clip(
-            np.random.normal(size=self.action_space.shape[0]) * self.epsilon,
-            a_min=self.action_space.low,
-            a_max=self.action_space.high)
-        
-        if self.use_target_net:
-            
+        with torch.no_grad():
+            #Exploration noise
+            noise = torch.clamp(
+                torch.randn(self.action_space.shape[0], device=self.device) * self.epsilon,
+                min=-self.noise_clip,
+                max=self.noise_clip)
+
             #1. Next action via the target policy network
             next_action = torch.clamp(
-                self.policy_target.forward(next_state) + to_torch(noise).to(self.device), 
-                min=to_torch(self.action_space.low), #Minimum action value
-                max=to_torch(self.action_space.high)) #Maximum action value
+                self.policy_target.forward(next_state) + noise, 
+                min=self.action_low, #Minimum action value
+                max=self.action_high) #Maximum action value
             
             #2. Forward pass for both Q networks
             q_prime1 = self.targetQ1.forward(next_state, next_action)
             q_prime2 = self.targetQ2.forward(next_state, next_action)
             
             #3. Bootstrapping the minimum of the two Q networks
-            return reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2) 
+            td_target = reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2)
+        return td_target
         
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
@@ -162,12 +167,12 @@ class TD3Agent(Agent):
         # We start at i=1 to prevent a direct update of the weights
         for i in range(1, self.opt_iter + 1):
             #Sample from the replay memory
-            state, action, reward, next_state, done, info = memory.sample(self.batch_size, self.device)
+            state, action, reward, next_state, done, info = memory.sample(self.batch_size, randomly = False)
 
             #Forward pass for Q networks
             td_target = self.calc_td_target(reward, done, next_state)
-            q1_loss = self.criterion(self.Q1.forward(state, action), td_target.detach())
-            q2_loss = self.criterion(self.Q2.forward(state, action), td_target.detach())
+            q1_loss = self.criterion(self.Q1.forward(state, action), td_target)
+            q2_loss = self.criterion(self.Q2.forward(state, action), td_target)
             
             #Backward step for Q1 network
             self.optimizer_q1.zero_grad()
@@ -183,7 +188,7 @@ class TD3Agent(Agent):
                 torch.nn.utils.clip_grad_value_(parameters=self.Q2.parameters(), clip_value=self.gradient_clipping_value, foreach=self.use_clip_foreach)
             self.optimizer_q2.step()
             
-            #Get the target for the policy network
+            #Get the target for Policy network
             q_1 = self.Q1.forward(state, self.policy.forward(state))
             policy_loss = -torch.mean(q_1)
             
@@ -192,7 +197,7 @@ class TD3Agent(Agent):
                 self.optimizer_policy.zero_grad()
                 policy_loss.backward()
                 if self.use_gradient_clipping:
-                    torch.nn.utils.clip_grad_value_(parameters=self.Policy.parameters(), clip_value=self.gradient_clipping_value, foreach=self.use_clip_foreach)
+                    torch.nn.utils.clip_grad_value_(parameters=self.policy.parameters(), clip_value=self.gradient_clipping_value, foreach=self.use_clip_foreach)
                 self.optimizer_policy.step()
 
             #Logging the losses
@@ -203,10 +208,33 @@ class TD3Agent(Agent):
         self.adjust_epsilon(episode_i)
         
         #after each optimization, update target network
-        self.updateTargetNets(soft_update=self.use_soft_updates)
+        if self.use_soft_updates:
+            # soft update of target networks
+            with torch.no_grad():
+                for param, target_param in zip(self.targetQ1.parameters(), self.targetQ1.parameters()):
+                    target_param.data.copy_(
+                        target_param.data * (1.0 - self.tau) + param.data * self.tau
+                    )
+                for param, target_param in zip(self.targetQ2.parameters(), self.targetQ2.parameters()):
+                    target_param.data.copy_(
+                        target_param.data * (1.0 - self.tau) + param.data * self.tau
+                    )
+                for param, target_param in zip(self.policy_target.parameters(), self.policy_target.parameters()):
+                    target_param.data.copy_(
+                        target_param.data * (1.0 - self.tau) + param.data * self.tau
+                    )
+        else:
+            # Hard update if needed after certain freq
+            if episode_i % self.target_net_update_freq == 0:
+                self.targetQ1.load_state_dict(self.Q1.state_dict())
+                self.targetQ2.load_state_dict(self.Q2.state_dict())
+                self.policy_target.load_state_dict(self.policy_target.state_dict())
+                    
+        #self.updateTargetNets(soft_update=self.use_soft_updates)
 
-        # Return average losses over the optimization steps
+        #Return average over q and policy losses
         avg_losses = np.mean(losses, axis=0).tolist()
+        
         return avg_losses
 
     def setMode(self, eval=False) -> None:
@@ -219,18 +247,12 @@ class TD3Agent(Agent):
             self.Q1.eval()
             self.Q2.eval()
             self.policy.eval()
-            self.targetQ1.eval()
-            self.targetQ2.eval()
-            self.policy_target.eval()
+            
         else:
             self.Q1.train()
             self.Q2.train()
             self.policy.train()
-            self.targetQ1.train()
-            self.targetQ2.train()
-            self.policy_target.train()
             
-    
     def saveModel(self, model_name: str, iteration: int) -> None:
         """
         Saves the model parameters of the agent.
@@ -249,26 +271,21 @@ class TD3Agent(Agent):
         os.makedirs(directory, exist_ok = True)
         torch.save(checkpoint, file_path)
         print(f"Actor and Critic weights saved successfully!")
-
-    def loadModel(self, file_name: str) -> None:
-        """
-        Loads the model parameters of the agent.
-        """
-        checkpoint = torch.load(file_name, map_location=self.device)
-        self.policy.load_state_dict(checkpoint["actor"])
-        self.Q1.load_state_dict(checkpoint["critic1"])
-        self.Q2.load_state_dict(checkpoint["critic2"])
-        self.targetQ1.load_state_dict(checkpoint["critic1_target"])
-        self.targetQ2.load_state_dict(checkpoint["critic2_target"])
-        self.log_alpha = torch.tensor(
-            checkpoint["log_alpha"],
-            dtype=torch.float32,
-            requires_grad=True,
-            device=self.device
-        )
-        self.alpha = self.log_alpha.exp().detach().item()
-        print(f"Model loaded from {file_name}")
     
+    def loadModel(self, file_name: str) -> None:
+        try:
+            checkpoint = torch.load(file_name, map_location=self.device)
+            self.policy.load_state_dict(checkpoint["actor"])
+            self.Q1.load_state_dict(checkpoint["critic1"])
+            self.Q2.load_state_dict(checkpoint["critic2"])
+            self.targetQ1.load_state_dict(checkpoint["critic1_target"])
+            self.targetQ2.load_state_dict(checkpoint["critic2_target"])
+            print(f"Model loaded successfully from {file_name}")
+        except FileNotFoundError:
+            print(f"Error: File {file_name} not found.")
+        except Exception as e:
+            print(f"An error occurred while loading the model: {str(e)}")
+        
     def updateTargetNets(self, soft_update: bool) -> None:
         """
         Updates the target network with the weights of the original one

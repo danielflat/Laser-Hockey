@@ -6,10 +6,12 @@ Author: Daniel
 HOCKEY = "Hockey-v0"
 PENDULUM = "Pendulum-v1"
 CARTPOLE = "CartPole-v1"
+LUNARLANDER = "LunarLander-v3"
 DQN_ALGO = "DQN_Algo"
 PPO_ALGO = "PPO_Algo"
 TD3_ALGO = "TD3_Algo"
 SAC_ALGO = "SAC_Algo"
+MPO_ALGO = "MPO_Algo"
 ADAMW = "AdamW"
 ADAM = "Adam"
 L1 = "L1"
@@ -21,12 +23,14 @@ HUMAN = "human"
 SUPPORTED_ENVIRONMENTS = {
     HOCKEY,
     PENDULUM,
-    CARTPOLE
+    CARTPOLE,
+    LUNARLANDER
 }
 SUPPORTED_ALGORITHMS = {
     DQN_ALGO,
     PPO_ALGO,
-    TD3_ALGO
+    TD3_ALGO,
+    MPO_ALGO
 }
 SUPPORTED_OPTIMIZERS = {
     ADAMW,

@@ -17,8 +17,9 @@ import hockey.hockey_env as h_env
 from src.agents.dqnagent import DQNAgent
 from src.agents.ppoagent import PPOAgent
 from src.agents.td3agent import TD3Agent
+from src.agents.mpoagent import MPOAgent
 from src.agents.sac import SoftActorCritic
-from src.util.constants import DQN_ALGO, HOCKEY, PPO_ALGO, TD3_ALGO, SAC_ALGO, SUPPORTED_ENVIRONMENTS, SUPPORTED_RENDER_MODES
+from src.util.constants import DQN_ALGO, HOCKEY, LUNARLANDER, PPO_ALGO, TD3_ALGO, SAC_ALGO, MPO_ALGO, SUPPORTED_ENVIRONMENTS, SUPPORTED_RENDER_MODES
 from src.util.directoryutil import get_path
 from src.util.discreteactionmapper import DiscreteActionWrapper
 
@@ -52,7 +53,7 @@ def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int)
 
 
 def initAgent(use_algo: str, env,
-              agent_settings: dict, dqn_settings: dict, ppo_settings: dict, td3_settings: dict, sac_settings: dict, device: device):
+              agent_settings: dict, dqn_settings: dict, ppo_settings: dict, td3_settings: dict, sac_settings: dict, mpo_settings: dict, device: device):
     """
     Initialize the agent based on the config
     """
@@ -81,6 +82,16 @@ def initAgent(use_algo: str, env,
             agent_settings = agent_settings,
             device = device,
             sac_settings = sac_settings
+        )
+    elif use_algo == MPO_ALGO:
+        state_space_shape: tuple[int, ...] = env.observation_space.shape
+        action_space: tuple[int, ...] = env.action_space
+        return MPOAgent(
+            state_dim = state_space_shape[0],
+            action_size = env.action_space.n,
+            agent_settings = agent_settings,
+            device = device,
+            mpo_settings = mpo_settings
         )
     else:
         raise Exception(f"The algorithm '{use_algo}' is not supported! Please choose another one!")
