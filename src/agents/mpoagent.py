@@ -62,7 +62,7 @@ class Actor(nn.Module):
             (B,) the greedy action
         """
         with torch.no_grad():
-            action_probs = self.actor(state)
+            action_probs = self.net(state)
             greedyAction = torch.argmax(action_probs, dim = -1)
             return greedyAction
         
@@ -142,7 +142,8 @@ class MPOAgent(Agent):
         self.hidden_dim = mpo_settings.get("HIDDEN_DIM", 128) 
         self.sample_action_num = mpo_settings.get("SAMPLE_ACTION_NUM", 10) 
         self.ε_dual = mpo_settings.get("DUAL_CONSTAINT", 0.1) 
-        self.ε_kl = mpo_settings.get("KL_CONSTRAINT", 0.001) 
+        #self.ε_kl = mpo_settings.get("KL_CONSTRAINT", 0.001) 
+        self.ε_kl = agent_settings.get("EPSILON")
         self.mstep_iteration_num = mpo_settings.get("MSTEP_ITER", 5)
         self.α_scale = mpo_settings.get("ALPHA_SCALE", 1.0)
         
@@ -190,7 +191,7 @@ class MPOAgent(Agent):
             
             if self.isEval:
                 # if you are in eval mode, get the greedy Action
-                greedy_action = self.policy_net.greedyAction(state)
+                greedy_action = self.actor.greedyAction(state)
                 return greedy_action.item()
             else:
                 # In training mode, use epsilon greedy action sampling
@@ -237,8 +238,11 @@ class MPOAgent(Agent):
                 torch.arange(self.da)[..., None].expand(-1, B).to(self.device)  # (da, B)
             ).exp().transpose(0, 1)  # (B, da)
             
-            sampled_next_actions = self.A_eye[None, ...].expand(B, -1, -1)  # (B, da, da)
-            expanded_next_states = next_states[:, None, :].expand(-1, self.da, -1)  # (B, da, ds)
+            #Create a one-hot encoded action tensor
+            sampled_next_actions = self.A_eye.unsqueeze(0).expand(B, -1, -1) # (B, da, da)
+            expanded_next_states = next_states.reshape(B, 1, self.ds).expand((B, self.da, self.ds))  # (K, da, ds)
+            
+            #Q value for the next states averaged over all possible actions weighted by the policy probabilities
             expected_next_q = (
                 self.target_critic(
                     expanded_next_states.reshape(-1, self.ds),  # (B * da, ds)
@@ -401,6 +405,9 @@ class MPOAgent(Agent):
             
             #Keep track of the losses
             losses.append([loss_critic.item(), loss_MLE.item(), loss_actor.item()])
+            
+        #after each optimization, decay epsilon
+        self.adjust_epsilon(episode_i)
         
         #update the target networks
         self.UpdateTargetNets(self.use_soft_updates)
