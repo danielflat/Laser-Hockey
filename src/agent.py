@@ -115,3 +115,18 @@ class Agent(ABC):
                 return nn.MSELoss()
         else:
             raise NotImplemented(f"The Loss function '{loss_name}' is not supported! Please choose another one!")
+
+    def updateTargetNet(self, soft_update: bool, source: nn.Module, target: nn.Module) -> None:
+        """
+        Updates the target network with the weights of the original one
+        """
+        assert self.use_target_net == True, "You must use have 'self.use_target == True' to call 'updateTargetNet()'"
+
+        if soft_update:
+            # Soft update of the target network's weights
+            # θ′ ← τ θ + (1 −τ )θ′ where θ′ are the target net weights
+            for target_param, param in zip(target.parameters(), source.parameters()):
+                target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+        else:
+            # Do a hard parameter update. Copy all values from the origin to the target network
+            target.load_state_dict(source.state_dict())
