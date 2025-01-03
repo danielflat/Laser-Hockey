@@ -123,21 +123,14 @@ class DDPGAgent(Agent):
             self._copyNets()
 
         # # Define the Optimizer
-        # self.actor_optim = self.initOptim(optim = ddpg_settings["ACTOR"]["OPTIMIZER"],
-        #                                   parameters = self.origin_net.actor.parameters())
-        # self.critic_optim = self.initOptim(optim = ddpg_settings["CRITIC"]["OPTIMIZER"],
-        #                                    parameters = self.origin_net.critic.parameters())
-        #
-        # # Define Loss function
-        # self.criterion = self.initLossFunction(loss_name = ddpg_settings["CRITIC"]["LOSS_FUNCTION"])
+        self.actor_optim = self.initOptim(optim = ddpg_settings["ACTOR"]["OPTIMIZER"],
+                                          parameters = self.origin_net.actor.parameters())
+        self.critic_optim = self.initOptim(optim = ddpg_settings["CRITIC"]["OPTIMIZER"],
+                                           parameters = self.origin_net.critic.parameters())
 
-        self.actor_optim = torch.optim.Adam(self.origin_net.actor.parameters(),
-                                            lr = 0.00001,
-                                            eps = 0.000001)
-        self.critic_optim = torch.optim.Adam(self.origin_net.critic.parameters(),
-                                             lr = 0.0001,
-                                             eps = 0.000001)
-        self.criterion = torch.nn.SmoothL1Loss()
+        # Define Loss function
+        self.criterion = self.initLossFunction(loss_name = ddpg_settings["CRITIC"]["LOSS_FUNCTION"])
+
 
     def act(self, state: torch.Tensor) -> np.ndarray:
         """
