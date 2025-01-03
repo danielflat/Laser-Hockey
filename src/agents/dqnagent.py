@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import List, Tuple
 
 import numpy as np
 import torch
@@ -53,7 +54,7 @@ class QFunction(nn.Module):
 
 
 class DQNAgent(Agent):
-    def __init__(self, state_shape: tuple[int, ...], action_size: int, agent_settings: dict, dqn_settings: dict,
+    def __init__(self, state_shape: Tuple[int, ...], action_size: int, agent_settings: dict, dqn_settings: dict,
                  device: torch.device):
         super().__init__(agent_settings = agent_settings, device = device)
 
@@ -89,8 +90,7 @@ class DQNAgent(Agent):
             if self.use_target_net:
                 self.targetQ = torch.compile(self.targetQ)
 
-
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         """
         This function is used to train and optimize the Q Network with the help of the replay memory.
         :return: A list of all losses during optimization

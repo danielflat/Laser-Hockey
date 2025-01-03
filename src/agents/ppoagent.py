@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import List
 
 import numpy as np
 import torch
@@ -64,8 +65,7 @@ class PPOAgent(Agent):
             self.policy_net = torch.compile(self.policy_net)
             self.policy_old = torch.compile(self.policy_old)
 
-
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         """
         This function is used to train and optimize the Q Network with the help of the replay memory.
         :return: A list of all losses during optimization

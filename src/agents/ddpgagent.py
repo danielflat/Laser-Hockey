@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import List
 
 import gymnasium
 import numpy as np
@@ -146,18 +147,18 @@ class DDPGAgent(Agent):
         with torch.no_grad():
             if self.isEval:
                 greedy_action = self.origin_net.greedyAction(state)
-                return greedy_action.detach().numpy()
+                return greedy_action.detach().cpu().numpy()
 
             # In training mode, use epsilon greedy action sampling
             elif not self.isEval:
                 proposed_action = self.origin_net.greedyAction(state)
                 noise = self.noise_factor * self.noise.sample()
                 noisy_action = proposed_action + noise
-                normalized_action = self.action_space.low + (noisy_action.detach().numpy() + 1.0) / 2.0 * (
+                normalized_action = self.action_space.low + (noisy_action.detach().cpu().numpy() + 1.0) / 2.0 * (
                         self.action_space.high - self.action_space.low)
                 return normalized_action
 
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         losses = []
 
         for i in range(1, self.opt_iter + 1):

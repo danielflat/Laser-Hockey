@@ -1,13 +1,16 @@
-import torch
-from torch import nn
-import torch.nn.functional as F
-import numpy as np
-
-from src.replaymemory import ReplayMemory
-from src.util.constants import ADAM, MSELOSS, LINEAR, EXPONENTIAL
-from src.agent import Agent  # Adjust import to match your project structure
-from src.util.directoryutil import get_path
 import os
+from typing import List
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch import nn
+
+from src.agent import Agent  # Adjust import to match your project structure
+from src.replaymemory import ReplayMemory
+from src.util.constants import MSELOSS
+from src.util.directoryutil import get_path
+
 
 ################################################################################
 # Helper Networks
@@ -211,7 +214,7 @@ class SoftActorCritic(Agent):
         action = np.expand_dims(action, axis=0)
         return action
 
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         """
         Perform one or more optimization steps of the SAC algorithm:
           1. Sample a batch from replay memory

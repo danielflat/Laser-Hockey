@@ -8,6 +8,7 @@ Author: Daniel
 """
 import logging
 import os
+from typing import Tuple
 
 import gymnasium
 import numpy as np
@@ -64,12 +65,12 @@ def initAgent(use_algo: str, env,
     """
 
     if use_algo == DQN_ALGO:
-        state_space_shape: tuple[int, ...] = env.observation_space.shape
+        state_space_shape: Tuple[int, ...] = env.observation_space.shape
         action_size: int = env.action_space.n
         return DQNAgent(state_shape = state_space_shape, action_size = action_size, agent_settings = agent_settings,
                         dqn_settings = dqn_settings, device = device)
     elif use_algo == PPO_ALGO:
-        state_space_shape: tuple[int, ...] = env.observation_space.shape
+        state_space_shape: Tuple[int, ...] = env.observation_space.shape
         action_size: int = env.action_space.n
         return PPOAgent(observation_size = state_space_shape[0], action_size = action_size,
                         agent_settings = agent_settings, ppo_settings = ppo_settings, device = device)
@@ -77,13 +78,13 @@ def initAgent(use_algo: str, env,
         return DDPGAgent(observation_space = env.observation_space, action_space = env.action_space,
                          agent_settings = agent_settings, ddpg_settings = ddpg_settings, device = device)
     elif use_algo == TD3_ALGO:
-        state_space_shape: tuple[int, ...] = env.observation_space.shape
-        action_space: tuple[int, ...] = env.action_space
+        state_space_shape: Tuple[int, ...] = env.observation_space.shape
+        action_space: Tuple[int, ...] = env.action_space
         return TD3Agent(observation_size = state_space_shape[0], action_space = action_space,
                         agent_settings = agent_settings, td3_settings = td3_settings, device = device)
     elif use_algo == SAC_ALGO:
-        state_space_shape: tuple[int, ...] = env.observation_space.shape
-        action_space: tuple[int, ...] = env.action_space
+        state_space_shape: Tuple[int, ...] = env.observation_space.shape
+        action_space: Tuple[int, ...] = env.action_space
         return SoftActorCritic(
             state_dim = state_space_shape[0],
             action_dim = action_space,
@@ -92,8 +93,8 @@ def initAgent(use_algo: str, env,
             sac_settings = sac_settings
         )
     elif use_algo == MPO_ALGO:
-        state_space_shape: tuple[int, ...] = env.observation_space.shape
-        action_space: tuple[int, ...] = env.action_space
+        state_space_shape: Tuple[int, ...] = env.observation_space.shape
+        action_space: Tuple[int, ...] = env.action_space
         return MPOAgent(
             state_dim = state_space_shape[0],
             action_size = env.action_space.n,

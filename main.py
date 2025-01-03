@@ -3,17 +3,16 @@ import time
 from itertools import count
 
 import numpy as np
-if not hasattr(np, 'bool8'):
-    np.bool8 = np.bool_  # Map bool8 to bool_
 import torch
 import yaml
 
 from src.replaymemory import ReplayMemory
-from src.settings import AGENT_SETTINGS, DQN_SETTINGS, MAIN_SETTINGS, PPO_SETTINGS, TD3_SETTINGS, SAC_SETTINGS, MPO_SETTINGS, SETTINGS
+from src.settings import AGENT_SETTINGS, DDPG_SETTINGS, DQN_SETTINGS, MAIN_SETTINGS, MPO_SETTINGS, PPO_SETTINGS, \
+    SAC_SETTINGS, \
+    SETTINGS, \
+    TD3_SETTINGS
 from src.util.contract import initAgent, initEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics
-
-from src.util.constants import SAC_ALGO
 
 SEED = MAIN_SETTINGS["SEED"]
 DEVICE = MAIN_SETTINGS["DEVICE"]
@@ -29,11 +28,12 @@ NUM_TEST_EPISODES = MAIN_SETTINGS["NUM_TEST_EPISODES"]
 EPISODE_UPDATE_ITER = MAIN_SETTINGS["EPISODE_UPDATE_ITER"]
 SHOW_PLOTS = MAIN_SETTINGS["SHOW_PLOTS"]
 CHECKPOINT_ITER = MAIN_SETTINGS["CHECKPOINT_ITER"]
-BATCH_SIZE = AGENT_SETTINGS["BATCH_SIZE"]
+
 
 def main():
+    print("TEST")
     # Let's first set the seed
-    initSeed(seed=SEED, device=DEVICE)
+    initSeed(seed = SEED, device = DEVICE)
 
     # If you want to use TF32 instead of Float 32, you can activate it here. Might not be available for old GPUs
     if USE_TF32:
@@ -43,11 +43,13 @@ def main():
     env = initEnv(USE_ENV, RENDER_MODE, NUMBER_DISCRETE_ACTIONS)
 
     # Get some priors regarding the environment
-    # state_space_shape: tuple[int, ...] = env.observation_space.shape
+    # state_space_shape: Tuple[int, ...] = env.observation_space.shape
 
     # Choose which algorithm to pick to initialize the agent
     agent = initAgent(USE_ALGO, env = env, agent_settings = AGENT_SETTINGS, dqn_settings = DQN_SETTINGS,
-                      ppo_settings = PPO_SETTINGS, td3_settings = TD3_SETTINGS, sac_settings = SAC_SETTINGS, mpo_settings = MPO_SETTINGS, device = DEVICE)
+                      ppo_settings = PPO_SETTINGS, ddpg_settings = DDPG_SETTINGS,
+                      td3_settings = TD3_SETTINGS, sac_settings = SAC_SETTINGS, mpo_settings = MPO_SETTINGS,
+                      device = DEVICE)
 
     # Init the memory
     memory = ReplayMemory(capacity = BUFFER_SIZE)
@@ -65,8 +67,8 @@ def main():
 
     # Training loop
     logging.info(f"The configuration was valid! Start training 💪")
-    agent.setMode(eval=False)  # Set the agent in training mode
-    state, info = env.reset(seed=SEED)
+    agent.setMode(eval = False)  # Set the agent in training mode
+    state, info = env.reset(seed = SEED)
 
     for i_training in range(1, NUM_TRAINING_EPISODES + 1):
         # We track for each episode how high the reward was
@@ -75,11 +77,11 @@ def main():
 
         # Convert state to torch
         state = torch.from_numpy(state).to(DEVICE)
-        losses = np.array([])
 
-        for step in count(start=1):
+        for step in count(start = 1):
             # choose the action
             action = agent.act(state)
+
             # perform the action
             next_state, reward, terminated, truncated, info = env.step(action)
 
@@ -87,23 +89,14 @@ def main():
             total_reward += reward
 
             # Convert quantities into tensors
-            if USE_ALGO == SAC_ALGO:
-                action = torch.tensor(action, device=DEVICE, dtype=torch.float32)
-            else:
-                action = torch.tensor(action, device=DEVICE, dtype=torch.int64)
-            reward = torch.tensor(reward, device=DEVICE, dtype=torch.float32)
-            done = torch.tensor(terminated or truncated, device=DEVICE,
-                                dtype=torch.int)  # to be able to do arithmetics with the done signal, we need an int
-            next_state = torch.tensor(next_state, device=DEVICE)
-
+            action = torch.tensor(action, device = DEVICE, dtype = torch.float32)
+            reward = torch.tensor(reward, device = DEVICE, dtype = torch.float32)
+            done = torch.tensor(terminated or truncated, device = DEVICE,
+                                dtype = torch.int)  # to be able to do arithmetics with the done signal, we need an int
+            next_state = torch.from_numpy(next_state).to(device = DEVICE)
 
             # Store this transition in the memory
             memory.push(state, action, reward, next_state, done, info)
-
-            if USE_ALGO == SAC_ALGO:
-                if len(memory) >= (100 * BATCH_SIZE):
-                    step_losses = agent.optimize(memory = memory, episode_i = i_training)
-                    losses = np.concatenate((losses, step_losses), axis=0)
 
             # Update the state
             state = next_state
@@ -115,17 +108,8 @@ def main():
         # after each episode, we want to log some statistics
         episode_rewards.append(total_reward)
 
-        if USE_ALGO == SAC_ALGO and len(memory) >= (100 * BATCH_SIZE):
-            t_end = time.time()
-            episode_time = t_end - t_start
-            episode_losses.append(losses)
-            episode_epsilon.append(agent.epsilon)
-            logging.info(
-                f"Training Iter: {i_training} | Req. Steps: {episode_durations[i_training - 1]} | Total reward: {total_reward:.4f} |"
-                f" Avg. Loss: {np.array(losses).mean():.4f} | Epsilon: {agent.epsilon:.4f} | Req. Time: {episode_time:.4f} sec.")
-
         # After some episodes and collecting some data, we optimize the agent
-        if not USE_ALGO == SAC_ALGO and i_training % EPISODE_UPDATE_ITER == 0:
+        if i_training % EPISODE_UPDATE_ITER == 0:
             losses = agent.optimize(memory = memory, episode_i = i_training)
 
             # After optimization, we can log some *more* statistics
@@ -137,9 +121,9 @@ def main():
                 f"Training Iter: {i_training} | Req. Steps: {episode_durations[i_training - 1]} | Total reward: {total_reward:.4f} |"
                 f" Avg. Loss: {np.array(losses).mean():.4f} | Epsilon: {agent.epsilon:.4f} | Req. Time: {episode_time:.4f} sec.")
 
-        # Plot every 1 episodes
-        if SHOW_PLOTS and i_training % 1 == 0 and len(memory) >= (100 * BATCH_SIZE):
-            plot_training_metrics(episode_durations=episode_durations, episode_rewards=episode_rewards,
+        # Plot every 100 episodes
+        if SHOW_PLOTS and i_training % 100 == 0:
+            plot_training_metrics(episode_durations = episode_durations, episode_rewards = episode_rewards,
                                   episode_losses = episode_losses, current_episode = i_training,
                                   episode_update_iter = EPISODE_UPDATE_ITER)
 
@@ -150,13 +134,13 @@ def main():
         # reset the environment
         state, info = env.reset(
             seed = SEED + i_training)  # by resetting always a different but predetermined seed, we ensure the reproducibility of the results
-        
 
     # Now, we do some testing
     logging.info("Training is done! Now we will do some testing!")
-    agent.setMode(eval=True)
+    agent.setMode(eval = True)
     test_durations = []
     test_rewards = []
+    state, info = env.reset()
 
     for i_test in range(1, NUM_TEST_EPISODES + 1):
         # We track for each episode how high the reward was
@@ -165,7 +149,7 @@ def main():
         # Convert state to torch
         state = torch.from_numpy(state).to(DEVICE)
 
-        for step in count(start=1):
+        for step in count(start = 1):
             # choose the action
             action = agent.act(state)
 

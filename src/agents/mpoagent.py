@@ -1,18 +1,16 @@
 import os
+from typing import List
+
 import numpy as np
-from scipy.optimize import minimize
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from functools import partial
+from scipy.optimize import minimize
+from torch.distributions import Categorical
 
-from torch.nn.utils import clip_grad_norm_
-from torch.distributions import MultivariateNormal, Categorical
-
+from src.agent import Agent
 from src.replaymemory import ReplayMemory
-from src.util.constants import ADAM, MSELOSS, LINEAR, EXPONENTIAL
-from src.agent import Agent 
 from src.util.directoryutil import get_path
+
 
 ################################################################################
 # Helper Networks
@@ -267,7 +265,7 @@ class MPOAgent(Agent):
         
         return loss
 
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         """
         Optimize actor and critic networks based on experience replay.
             1. Policy Evaluation: Update Critic via TD Learning
@@ -279,7 +277,7 @@ class MPOAgent(Agent):
         :param episode_i:
             (int) the current episode number
         :return:    
-            (list[float]) the losses of the actor and critic networks
+            (List[float]) the losses of the actor and critic networks
         """
         assert self.isEval == False
         #Sampling the whole trajectory will give us better optimization since we maximize the nr of sampled q values in the E step (works esp good on Cartpole env)

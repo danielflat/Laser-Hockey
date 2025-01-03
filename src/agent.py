@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import List
 
 import numpy as np
 import torch
@@ -40,7 +41,7 @@ class Agent(ABC):
         pass
 
     @abstractmethod
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         pass
 
     @abstractmethod

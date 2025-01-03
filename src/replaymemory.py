@@ -1,7 +1,7 @@
 import logging
 import random
 from collections import deque
-from typing import Any
+from typing import Any, List, Tuple
 
 import torch
 from torch import Tensor
@@ -22,7 +22,7 @@ class ReplayMemory:
         """
         self.storage.append((state, action, reward, next_state, done, info))
 
-    def sample(self, batch_size: int, randomly: bool) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, list[Any]]:
+    def sample(self, batch_size: int, randomly: bool) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, List[Any]]:
         """
         Sample a batch of transitions from the memory.
         """

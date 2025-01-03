@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 import numpy as np
 import torch
@@ -173,9 +174,8 @@ class TD3Agent(Agent):
             td_target = reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2)
             
         return td_target
-        
 
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         """
         Compute forward and backward pass for the Q and Policy networks
         """
