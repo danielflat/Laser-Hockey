@@ -33,6 +33,7 @@ class Agent(ABC):
         self.device: device = device
         self.use_clip_foreach = agent_settings["USE_CLIP_FOREACH"]
         self.USE_BF_16 = agent_settings["USE_BF16"]
+        self.USE_COMPILE = agent_settings["USE_COMPILE"]
 
     @abstractmethod
     def act(self, x: torch.Tensor) -> int:

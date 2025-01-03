@@ -55,9 +55,15 @@ class PPOAgent(Agent):
         self.policy_old.eval()  # set old policy net always to eval mode
         self.policy_old.load_state_dict(self.policy_net.state_dict())  # copy the network
 
-        self.optimizer = self.initOptim(optim = agent_settings["OPTIMIZER"], parameters = self.policy_net.parameters())
+        self.optimizer = self.initOptim(optim = ppo_settings["OPTIMIZER"], parameters = self.policy_net.parameters())
 
-        self.criterion = self.initLossFunction(loss_name = agent_settings["LOSS_FUNCTION"])
+        self.criterion = self.initLossFunction(loss_name = ppo_settings["LOSS_FUNCTION"])
+
+        # Activate torch.compile if wanted
+        if self.USE_COMPILE:
+            self.policy_net = torch.compile(self.policy_net)
+            self.policy_old = torch.compile(self.policy_old)
+
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
         """

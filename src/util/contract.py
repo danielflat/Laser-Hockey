@@ -8,18 +8,22 @@ Author: Daniel
 """
 import logging
 import os
+
 import gymnasium
 import numpy as np
 import torch
 from torch import device
 
 import hockey.hockey_env as h_env
+from src.agents.ddpgagent import DDPGAgent
 from src.agents.dqnagent import DQNAgent
-from src.agents.ppoagent import PPOAgent
-from src.agents.td3agent import TD3Agent
 from src.agents.mpoagent import MPOAgent
+from src.agents.ppoagent import PPOAgent
 from src.agents.sac import SoftActorCritic
-from src.util.constants import DQN_ALGO, HOCKEY, LUNARLANDER, PPO_ALGO, TD3_ALGO, SAC_ALGO, MPO_ALGO, SUPPORTED_ENVIRONMENTS, SUPPORTED_RENDER_MODES
+from src.agents.td3agent import TD3Agent
+from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, SAC_ALGO, SUPPORTED_ENVIRONMENTS, \
+    SUPPORTED_RENDER_MODES, \
+    TD3_ALGO
 from src.util.directoryutil import get_path
 from src.util.discreteactionmapper import DiscreteActionWrapper
 
@@ -41,19 +45,20 @@ def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int)
         raise Exception(f"The render mode '{render_mode}' is not supported! Please choose another one!")
 
     if use_env == HOCKEY:
-        env =  h_env.HockeyEnv()
+        env = h_env.HockeyEnv()
     else:
-        env = gymnasium.make(use_env, render_mode=render_mode)
+        env = gymnasium.make(use_env, render_mode = render_mode)
 
     # if we use a discrete action space, we have to discrete the env before
     if number_discrete_actions is not None and number_discrete_actions > 0:
-        env = DiscreteActionWrapper(env, bins=number_discrete_actions)
+        env = DiscreteActionWrapper(env, bins = number_discrete_actions)
 
     return env
 
 
 def initAgent(use_algo: str, env,
-              agent_settings: dict, dqn_settings: dict, ppo_settings: dict, td3_settings: dict, sac_settings: dict, mpo_settings: dict, device: device):
+              agent_settings: dict, dqn_settings: dict, ppo_settings: dict,
+              ddpg_settings: dict, td3_settings: dict, sac_settings: dict, mpo_settings: dict, device: device):
     """
     Initialize the agent based on the config
     """
@@ -68,6 +73,9 @@ def initAgent(use_algo: str, env,
         action_size: int = env.action_space.n
         return PPOAgent(observation_size = state_space_shape[0], action_size = action_size,
                         agent_settings = agent_settings, ppo_settings = ppo_settings, device = device)
+    elif use_algo == DDPG_ALGO:
+        return DDPGAgent(observation_space = env.observation_space, action_space = env.action_space,
+                         agent_settings = agent_settings, ddpg_settings = ddpg_settings, device = device)
     elif use_algo == TD3_ALGO:
         state_space_shape: tuple[int, ...] = env.observation_space.shape
         action_space: tuple[int, ...] = env.action_space
@@ -119,9 +127,3 @@ def setupLogging(model_name: str):
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
-
-
-
-
-
-

@@ -75,29 +75,20 @@ class DQNAgent(Agent):
                                      action_size=action_size)
             self.targetQ.to(self.device)
             self.targetQ.eval() # Set it always to Eval mode
-            self.updateTargetNet(soft_update=False)  # Copy the Q network
+            self.updateTargetNet(soft_update = False, source = self.Q, target = self.targetQ)  # Copy the Q network
 
         # Define the Optimizer
-        self.optimizer = self.initOptim(optim = agent_settings["OPTIMIZER"], parameters = self.Q.parameters())
+        self.optimizer = self.initOptim(optim = dqn_settings["OPTIMIZER"], parameters = self.Q.parameters())
 
         # Define Loss function
-        self.criterion = self.initLossFunction(loss_name = agent_settings["LOSS_FUNCTION"])
+        self.criterion = self.initLossFunction(loss_name = dqn_settings["LOSS_FUNCTION"])
 
+        # Activate torch.compile if wanted
+        if self.USE_COMPILE:
+            self.Q = torch.compile(self.Q)
+            if self.use_target_net:
+                self.targetQ = torch.compile(self.targetQ)
 
-    def updateTargetNet(self, soft_update) -> None:
-        """
-        Updates the target network with the weights of the original one
-        """
-        assert self.use_target_net == True, "You must use have 'self.use_target == True' to call 'updateTargetNet()'"
-
-        if soft_update:
-            # Soft update of the target network's weights
-            # θ′ ← τ θ + (1 −τ )θ′ where θ′ are the target net weights
-            for target_param, param in zip(self.targetQ.parameters(), self.Q.parameters()):
-                target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-        else:
-            # Do a hard parameter update. Copy all values from the origin to the target network
-            self.targetQ.load_state_dict(self.Q.state_dict())
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
         """
@@ -134,7 +125,7 @@ class DQNAgent(Agent):
 
             # Update the target net after some iterations again
             if self.use_target_net and i % self.target_net_update_freq == 0:
-                self.updateTargetNet(soft_update=self.use_soft_updates)
+                self.updateTargetNet(soft_update = self.use_soft_updates, source = self.Q, target = self.targetQ)
 
         # after each optimization, we want to decay epsilon
         self.adjust_epsilon(episode_i)
