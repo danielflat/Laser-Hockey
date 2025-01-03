@@ -1,4 +1,3 @@
-import logging
 import os
 
 import numpy as np
@@ -7,8 +6,8 @@ from torch import device, nn
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
-from src.util.constants import EXPONENTIAL, LINEAR
 from src.util.directoryutil import get_path
+
 
 class QFunction(nn.Module):
     def __init__(self, state_size: int, hidden_sizes: int, action_space: np.ndarray):
@@ -101,19 +100,26 @@ class TD3Agent(Agent):
         self.policy_target = PolicyFunction(state_size=self.state_shape,
                                             hidden_sizes=[128, 128, 64],
                                             action_space=self.action_space).to(device)
+        # Set the target nets in eval
+        self.targetQ1.eval()
+        self.targetQ2.eval()
+        self.policy_target.eval()
 
         #Copying the weights of the Q and Policy networks to the target networks
-        self.targetQ1.load_state_dict(self.Q1.state_dict())
-        self.targetQ2.load_state_dict(self.Q2.state_dict())
-        self.policy_target.load_state_dict(self.policy.state_dict())
-        
+        self._copy_nets(soft_update = False)
+
         #Initializing the optimizers, TO DO: Use different learning rates for Q and Policy networks
         self.optimizer_q = self.initOptim(optim=agent_settings["OPTIMIZER"], parameters=list(self.Q1.parameters()) + list(self.Q2.parameters()))
         self.optimizer_policy = self.initOptim(optim=agent_settings["OPTIMIZER"], parameters=self.policy.parameters())
         
         #Define Loss function
         self.criterion = self.initLossFunction(loss_name = agent_settings["LOSS_FUNCTION"])
-    
+
+    def _copy_nets(self, soft_update: bool):
+        self.updateTargetNet(soft_update = soft_update, source = self.Q1, target = self.targetQ1)
+        self.updateTargetNet(soft_update = soft_update, source = self.Q2, target = self.targetQ2)
+        self.updateTargetNet(soft_update = soft_update, source = self.policy, target = self.policy_target)
+
     def act(self, state: torch.Tensor) -> torch.Tensor:
         """
         The Agent chooses an action.
@@ -213,7 +219,7 @@ class TD3Agent(Agent):
         self.adjust_epsilon(episode_i)
         
         #after each optimization, update target network
-        self.updateTargetNets(soft_update=self.use_soft_updates)
+        self._copy_nets(soft_update = self.use_soft_updates)
         
         return losses
 

@@ -9,7 +9,7 @@ from torch import device, nn
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util.directoryutil import get_path
-from src.util.noiseutil import OUNoise
+from src.util.noiseutil import initNoise
 
 """
 Author: Daniel Flat
@@ -108,8 +108,9 @@ class DDPGAgent(Agent):
         observation_size = observation_space.shape[0]
         action_space = action_space.shape[0]
 
-        self.noise = OUNoise(shape = action_space)
-        self.noise_factor = ddpg_settings["NOISE_FACTOR"]
+        self.noise = initNoise(action_shape = action_space, noise_settings = ddpg_settings["NOISE"],
+                               device = self.device)
+        self.noise_factor = ddpg_settings["NOISE"]["NOISE_FACTOR"]
 
         # Define the Q-Network
         self.origin_net = ActorCritic(observation_size = observation_size, action_size = action_space,
@@ -142,18 +143,19 @@ class DDPGAgent(Agent):
         """
 
         # In evaluation mode, we always exploit
-        if self.isEval:
-            greedy_action = self.origin_net.greedyAction(state)
-            return greedy_action.detach().numpy()
+        with torch.no_grad():
+            if self.isEval:
+                greedy_action = self.origin_net.greedyAction(state)
+                return greedy_action.detach().numpy()
 
-        # In training mode, use epsilon greedy action sampling
-        elif not self.isEval:
-            proposed_action = self.origin_net.greedyAction(state)
-            noise = self.noise_factor * self.noise.sample()
-            noisy_action = proposed_action + noise
-            normalized_action = self.action_space.low + (noisy_action.detach().numpy() + 1.0) / 2.0 * (
-                    self.action_space.high - self.action_space.low)
-            return normalized_action
+            # In training mode, use epsilon greedy action sampling
+            elif not self.isEval:
+                proposed_action = self.origin_net.greedyAction(state)
+                noise = self.noise_factor * self.noise.sample()
+                noisy_action = proposed_action + noise
+                normalized_action = self.action_space.low + (noisy_action.detach().numpy() + 1.0) / 2.0 * (
+                        self.action_space.high - self.action_space.low)
+                return normalized_action
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
         losses = []
@@ -222,11 +224,12 @@ class DDPGAgent(Agent):
 
     def critic_forward(self, action, done, next_state, reward, state):
         # Step 01: Compute the td target
-        if self.use_target_net:
-            q_target = self.target_net.QValue(state = next_state, action = self.target_net.greedyAction(next_state))
-        else:
-            q_target = self.origin_net.QValue(state = next_state, action = self.origin_net.greedyAction(next_state))
-        td_target = reward + (1 - done) * self.discount * q_target.detach()
+        with torch.no_grad():
+            if self.use_target_net:
+                q_target = self.target_net.QValue(state = next_state, action = self.target_net.greedyAction(next_state))
+            else:
+                q_target = self.origin_net.QValue(state = next_state, action = self.origin_net.greedyAction(next_state))
+            td_target = reward + (1 - done) * self.discount * q_target
         # Step 02: Compute the prediction
         q_origin = self.origin_net.QValue(state, action)
         # Step 03: critic loss
@@ -249,24 +252,39 @@ class DDPGAgent(Agent):
         Saves the model parameters of the agent.
         """
 
+        checkpoint = {
+            "origin_actor": self.origin_net.actor.state_dict(),
+            "origin_critic": self.origin_net.critic.state_dict(),
+            "target_actor": self.target_net.actor.state_dict(),
+            "target_critic": self.target_net.critic.state_dict(),
+        }
+
         directory = get_path(f"output/checkpoints/{model_name}")
-        actor_file_path = os.path.join(directory, f"{model_name}_{iteration:05}_actor.pth")
-        critic_file_path = os.path.join(directory, f"{model_name}_{iteration:05}_critic.pth")
+        file_path = os.path.join(directory, f"{model_name}_{iteration:05}.pth")
 
         # Ensure the directory exists
         os.makedirs(directory, exist_ok = True)
 
-        torch.save(self.origin_net.actor.state_dict(), actor_file_path)
-        torch.save(self.origin_net.critic.state_dict(), critic_file_path)
-        logging.info(f"Actor and Critic weights saved successfully!")
+        torch.save(checkpoint, file_path)
+        logging.info(f"Iteration: {iteration} DDPG checkpoint saved successfully!")
 
     def loadModel(self, file_name: str) -> None:
         """
         Loads the model parameters of the agent.
         """
-        self.origin_net.actor.load_state_dict(torch.load(file_name.replace(".pth", "_actor.pth")))
-        self.origin_net.critic.load_state_dict(torch.load(file_name.replace(".pth", "_critic.pth")))
-        logging.info(f"Actor and Critic weights loaded successfully!")
+        try:
+            checkpoint = torch.load(file_name, map_location = self.device)
+            self.origin_net.actor.load_state_dict(checkpoint["origin_actor"])
+            self.origin_net.critic.load_state_dict(checkpoint["origin_critic"])
+            self.target_net.actor.load_state_dict(checkpoint["target_actor"])
+            self.target_net.critic.load_state_dict(checkpoint["target_critic"])
+            logging.info(f"Model loaded successfully from {file_name}")
+        except FileNotFoundError:
+            logging.error(f"Error: File {file_name} not found.")
+        except Exception as e:
+            logging.error(f"An error occurred while loading the model: {str(e)}")
+
+
 
     def _copyNets(self):
         # Step 01: Copy the actor net

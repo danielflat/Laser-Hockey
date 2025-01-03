@@ -5,7 +5,7 @@ from time import localtime, strftime
 
 import torch
 
-from src.util.constants import ADAM, DDPG_ALGO, EXPONENTIAL, MSELOSS, PENDULUM, SMOOTHL1
+from src.util.constants import ADAM, DDPG_ALGO, EXPONENTIAL, MSELOSS, PENDULUM, PINK_NOISE, SMOOTHL1
 
 _DEFAULT_OPTIMIZER = {
     "OPTIM_NAME": ADAM,  # Which optimizer to use
@@ -32,7 +32,7 @@ SETTINGS = {
         "BUFFER_SIZE": 1000000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
-        "NUM_TRAINING_EPISODES": 2000,  # How many training episodes should be run?
+        "NUM_TRAINING_EPISODES": 100,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
@@ -109,12 +109,20 @@ SETTINGS = {
             },
             "LOSS_FUNCTION": SMOOTHL1,
         },
-        "NOISE_FACTOR": 0.1,
-        "NOISE_NAME": "Normal",
-        "NOISE_PARAMS": {
-            "MEAN": 0,
-            "STD": 0.1
+        "NOISE": {
+            "NOISE_TYPE": PINK_NOISE,
+            "NOISE_FACTOR": 0.1,
+            "NOISE_PARAMS": {
+                # Params for white and pink noise
+                "MEAN": 0,  # only important for white noise
+                "STD": 0.1,
+
+                # Params for OU noise
+                "THETA": 0.15,
+                "DT": 1e-2,
+            }
         }
+
     },
     # The specific settings for the TD3 agent
     "TD3": {
@@ -122,14 +130,14 @@ SETTINGS = {
         "NOISE_CLIP": 1,  # The gaussian noise clip value
     },
     "SAC": {
-        "LEARN_ALPHA": True, # Whether to learn the temperature alpha
-        "TARGET_ENTROPY": None, # Target entropy for automatic alpha
+        "LEARN_ALPHA": True,  # Whether to learn the temperature alpha
+        "TARGET_ENTROPY": None,  # Target entropy for automatic alpha
         "INIT_ALPHA": 0.2,
         "HIDDEN_DIM": 256
     },
     "MPO": {
         "HIDDEN_DIM": 64,
-        "SAMPLE_ACTION_NUM" : 10,
+        "SAMPLE_ACTION_NUM": 10,
         "DUAL_CONSTAINT": 0.1,
         "KL_CONSTRAINT": 0.01,
         "MSTEP_ITER": 10,
