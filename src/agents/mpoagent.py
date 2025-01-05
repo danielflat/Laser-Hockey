@@ -84,14 +84,14 @@ class Critic(nn.Module):
         
         #Feedforward network
         self.net = nn.Sequential(
-            nn.Linear(self.ds + self.da, hidden_dim),
+            nn.Linear(self.ds, hidden_dim),
             nn.LeakyReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.LeakyReLU(),
-            nn.Linear(hidden_dim, 1),
+            nn.Linear(hidden_dim, self.da),
         )
 
-    def forward(self, state, action):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         :param state: 
             (B, ds) the state tensor
@@ -101,8 +101,16 @@ class Critic(nn.Module):
             (B,) Q-value
         """
             
-        h = torch.cat([state, action], dim=1)  # (B, ds+da)
-        return self.net(h)
+        return self.net(x)
+    
+    def QValue(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        """
+        Calculates the Q value for the given state and action
+        """
+        all_q_values = self.forward(state)
+        q_value = all_q_values.gather(dim=1, index=action)
+        return q_value
+    
     
 ################################################################################
 #  Maximum a Posteriori Policy Optimisation (MPO) Agent
@@ -142,8 +150,7 @@ class MPOAgent(Agent):
         self.hidden_dim = mpo_settings.get("HIDDEN_DIM", 128) 
         self.sample_action_num = mpo_settings.get("SAMPLE_ACTION_NUM", 10) 
         self.ε_dual = mpo_settings.get("DUAL_CONSTAINT", 0.1) 
-        #self.ε_kl = mpo_settings.get("KL_CONSTRAINT", 0.001) 
-        self.ε_kl = agent_settings.get("EPSILON")
+        self.ε_kl = mpo_settings.get("KL_CONSTRAINT", 0.0001) 
         self.mstep_iteration_num = mpo_settings.get("MSTEP_ITER", 5)
         self.α_scale = mpo_settings.get("ALPHA_SCALE", 1.0)
         
@@ -160,10 +167,11 @@ class MPOAgent(Agent):
         self.target_critic.load_state_dict(self.critic.state_dict())
 
         #Set up the optimizers
-        actor_optim_cfg = agent_settings.get("OPTIMIZER", None)
-        critic_optim_cfg = agent_settings.get("OPTIMIZER", None)
-        self.actor_optimizer = self.initOptim(actor_optim_cfg, self.actor.parameters())
-        self.critic_optimizer = self.initOptim(critic_optim_cfg, self.critic.parameters())
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), 
+                                                lr = 0.00001, eps = 0.000001,
+                                                )
+        self.critic_optimizer =  torch.optim.Adam(self.critic.parameters(), 
+                                                  lr = 0.0001, eps = 0.000001)
         
         #Define the loss function for the crtic
         self.norm_loss_q = nn.SmoothL1Loss()
@@ -207,9 +215,9 @@ class MPOAgent(Agent):
                     
                 return action.item()
         
-    def update_critic_td(self, states, actions, dones, next_states, rewards):
-        """
-        Compute the temporal difference loss and update the critic via gradient descent
+   def critic_update(self, states, actions, dones, next_states, rewards):
+        """ 
+        Compute the temporal difference loss for the critic network
         
         :param states: 
             (B, ds)
@@ -223,49 +231,70 @@ class MPOAgent(Agent):
             (B,)
         :return:
             (float) the loss for the critic
-        """
-        
-        B = states.size(0) #Batch size
+        """    
         with torch.no_grad():
             
-            #target policy output given the next state
-            π_p = self.target_actor(next_states)  # (B, da)
+            # Compute policy probabilities using the actor network
+            π = self.target_actor(next_states)  # (B, da)
+            π_dist = Categorical(probs=π)
+            π_p = π_dist.probs  # (B, da)
             
-            #define a Categorical dist using the target policy output
-            π = Categorical(probs=π_p)  # (B,)
-            
-            π_prob = π.expand((self.da, B)).log_prob(
-                torch.arange(self.da)[..., None].expand(-1, B).to(self.device)  # (da, B)
-            ).exp().transpose(0, 1)  # (B, da)
-            
-            #Create a one-hot encoded action tensor
-            sampled_next_actions = self.A_eye.unsqueeze(0).expand(B, -1, -1) # (B, da, da)
-            expanded_next_states = next_states.reshape(B, 1, self.ds).expand((B, self.da, self.ds))  # (K, da, ds)
-            
-            #Q value for the next states averaged over all possible actions weighted by the policy probabilities
-            expected_next_q = (
-                self.target_critic(
-                    expanded_next_states.reshape(-1, self.ds),  # (B * da, ds)
-                    sampled_next_actions.reshape(-1, self.da)  # (B * da, da)
-                ).reshape(B, self.da) * π_prob  # (B, da)
-            ).sum(dim=-1)  # (B,)
-            
-            q_new = rewards.squeeze() + self.discount * (1 - dones.squeeze()) * expected_next_q # (B)
-            
-            
-        #Update the critic using the q_target
-        self.critic_optimizer.zero_grad()
+            # Compute expected Q-values under policy
+            next_q_values = self.target_critic(next_states)  # (B, da)
+            expected_q = (π_p * next_q_values).sum(dim=1, keepdim=True)  # (B, 1)
+            # Calculate the td target
+            td_target = rewards + (1 - dones) * self.discount * expected_q
         
-        one_hot_actions = self.A_eye[actions.squeeze().long()]  # (B, da)
-        q = self.critic(states, one_hot_actions).squeeze(-1)  # (B,)
+        # Calculate the loss using predicted q value and td target
+        predicted_q_value = self.critic.QValue(states, actions)
+        critic_loss = self.norm_loss_q(predicted_q_value, td_target)
+
+        return critic_loss
+    
+    def find_qij_dist(self, q_target: torch.Tensor, π_target: torch.Tensor) -> torch.Tensor:
+        """
+        Find the action weights qij by applying two value constraints in a nonparametric way:
+        1. Keep qij close to the target q values. The distribution of qij can computed in closed form by minimizing the dual function
+        2. Apply softmax over all actions to normalize q values
+        """
         
-        loss = self.norm_loss_q(q_new, q)
-        loss.backward()
-        if self.use_gradient_clipping:
-            nn.utils.clip_grad_norm_(self.critic.parameters(), self.gradient_clipping_value)
-        self.critic_optimizer.step()
+        q_target_np = q_target.numpy()  # (K, da)
+        π_target_np = π_target.numpy()  # (K, da)
         
-        return loss
+        def dual(η):
+            """
+            Dual function for MPO with numerical stabilization.
+            
+            dual function of the non-parametric variational
+            g(η) = η*ε + η*mean(log(x)) where
+            x = mean(exp(Q(s, a)/η))
+            This equation is correspond to last equation of the [2] p.15
+            For numerical stabilization, this can be modified to
+            Qj = max(Q(s, a), along=a)
+            
+            I got this function from p.4 of the paper and the Github
+            https://github.com/daisatojp/mpo/blob/master/mpo/mpo.py
+            """
+            # Max Q-value per state
+            max_q = np.max(q_target_np, axis=1) 
+            # Stabilized exponential term
+            x = np.sum(π_target_np * np.exp((q_target_np - max_q[:, None]) / η), axis=1)
+            # Avoid log(0) by clamping x
+            x = np.clip(x, a_min=1e-8, a_max=None)
+            # Dual function value
+            g = η * self.ε_dual + np.mean(max_q) + η * np.mean(np.log(x))
+            
+            return g
+
+        bounds = [(1e-6, None)]
+        #Minimize the dual function using the scipy minimize function (1st constraint)
+        res = minimize(dual, np.array([self.η]), method='SLSQP', bounds=bounds)
+        #Update the dual variable η
+        self.η = res.x[0]
+        # Compute action weights (new q values) using dual variable η (see 3rd eq on page 4)
+        # Apply softmax over all actions to normailze q values (2nd constriant)
+        qij = torch.softmax(q_target / self.η, dim=1) # (K, da)
+        return qij
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
         """
@@ -302,97 +331,55 @@ class MPOAgent(Agent):
             
             # 1: Policy Evaluation: Update Critic (Q-function)
             loss_critic = self.update_critic_td(states, actions, dones, next_states, rewards)
+            # Backward pass in the critic network
+            self.critic_optimizer.zero_grad()
+            loss_critic.backward()
+            if self.use_gradient_clipping:
+                nn.utils.clip_grad_norm_(self.critic.parameters(), self.gradient_clipping_value)
+            self.critic_optimizer.step()
 
             # 2: E-Step Finding action weights via sampling and non-parametric optimization (4.1 in paper)
             with torch.no_grad():
                 
-                #Creates action tensor of shape (da, K), where each of the K rows contains repeated indices ranging from 0 to self.da - 1
-                actions = torch.arange(self.da).unsqueeze(1).expand(self.da, K).to(self.device)  # (da, K)
-                
-                #Get the policy output  (distribution object) for the K sampled states
-                b_p = self.target_actor(states)  # (K, da)
-                
-                #Categorical distribution of the actions
-                b = Categorical(probs=b_p)  
-                
-                #Get the probability for all the possible actions
-                b_prob = b.expand((self.da, K)).log_prob(actions).exp()  # (da, K)
-                
-                #Create a one-hot encoded action tensor 
-                expanded_actions = self.A_eye.unsqueeze(0).expand(K, -1, -1)  # (K, da, da)
-                
-                #Create a tensor of the states with a similar shape as the action tensor
-                expanded_states = states.reshape(K, 1, self.ds).expand((K, self.da, self.ds))  # (K, da, ds)
-                
                 #Get the q values for the K sampled states and *all* actions
-                target_q = (
-                    self.target_critic(
-                        expanded_states.reshape(-1, self.ds),  # (K * da, ds)
-                        expanded_actions.reshape(-1, self.da)  # (K * da, da)
-                    ).reshape(K, self.da)  # (K, da)
-                ).transpose(0, 1)  # (da, K)
+                q_target = self.target_critic(states)
                 
-                #Convert the tensors to numpy arrays
-                b_prob_np = b_prob.cpu().transpose(0, 1).numpy()  # (K, da)
+                #Get the policy output (probability for all states) for the K states
+                π_target = self.target_actor(states) # (K, da)
+                π_target_dist = Categorical(probs=π_target)
+                π_target_p = π_target_dist.probs  # (K, da)
                 
-                #categorical probability distribution of the actions, in the paper this is q(ai|sj)
-                target_q_np = target_q.cpu().transpose(0, 1).numpy()  # (K, da)
-                
-                    
-            #Optimize dual variable η
-            def dual(η):
-                """
-                dual function of the non-parametric variational
-                g(η) = η*ε + η*mean(log(sum(π(a|s)*exp(Q(s, a)/η))))
-                We have to multiply π by exp because this is expectation.
-                This equation is correspond to last equation of the [2] p.15
-                For numerical stabilization, this can be modified to
-                Qj = max(Q(s, a), along=a)
-                g(η) = η*ε + mean(Qj, along=j) + η*mean(log(sum(π(a|s)*(exp(Q(s, a)-Qj)/η))))
-                
-                I got this function from p.4 of the paper and the Github
-                https://github.com/daisatojp/mpo/blob/master/mpo/mpo.py
-                """
-                max_q = np.max(target_q_np, 1)
-                return η * self.ε_dual + np.mean(max_q) \
-                    + η * np.mean(np.log(np.sum(
-                        b_prob_np * np.exp((target_q_np - max_q[:, None]) / η), axis=1)))
-    
-    
-            bounds = [(1e-6, None)]
-            #Minimize the dual function using the scipy minimize function
-            res = minimize(dual, np.array([self.η]), method='SLSQP', bounds=bounds)
-            self.η = res.x[0]
-            
-            # Compute action weights (new q values) using dual variable η (see 3rd eq on page 4)
-            qij = torch.softmax(target_q / self.η, dim=0) # (da, K)
+                #Minimize the dual function to find the action weights qij
+                qij = self.find_qij_dist(q_target, π_target_p) # (K, da)
 
             # 3. M step. Policy Improvement (4.2 in paper)
             #Fitting an improved policy using the sampled q-values via gradient optimization on the Policy and the lagrangian function 
             for _ in range(self.mstep_iteration_num):
                 
+                #Creates action tensor of shape (da, K), where each of the K rows contains repeated indices ranging from 0 to self.da - 1
+                actions = torch.arange(self.da).unsqueeze(1).expand(self.da, K).to(self.device)  # (da, K)
+                
                 #action output of the current parametric policy
                 π_p = self.actor.forward(states)  # (K, da)
                 π = Categorical(probs=π_p)  # (K,)
+                π_log = π.log_prob(actions).T  # (K, da)
                 
-                # Last eq of p.4 in the paper
-                # MLE loss between the parametric policy and the sample based distribution qij without Kl regularization
-                loss_MLE = torch.mean(
-                    qij * π.expand((self.da, K)).log_prob(actions)
-                )
                 #Kl divergence between the current and target policy, used to regularize the MLE loss above 
-                kl = self.categorical_kl(p1=π_p, p2=b_p)
+                kl = self.categorical_kl(p1=π_p, p2=π_target_p).detach()
                 
-
-                # Update lagrange multipliers by gradient descent (inner optimiation loop)
+                # Minimize lagrange multiplier α by gradient descent (inner optimiation loop)
                 # this equation is derived from last eq of p.5 in the paper,
                 # just differentiate with respect to α
                 # and update α so that the equation is to be minimized.
-                self.η_kl -= self.α_scale * (self.ε_kl - kl).detach().item()
+                self.η_kl -= self.α_scale * (self.ε_kl - kl).item()
 
-                # Clip the lagrange multipliers to positive values
+                #Clip the lagrange multipliers to positive values
                 if self.η_kl < 0:
                     self.η_kl = 0.0
+                
+                # Last eq of p.4 in the paper
+                # MLE loss between the parametric policy and the sample based distribution qij without Kl regularization
+                loss_MLE = torch.mean(qij * π_log) #elementwise multiplication
                     
                 #Outer optimization loop
                 self.actor_optimizer.zero_grad()
@@ -410,7 +397,9 @@ class MPOAgent(Agent):
         self.adjust_epsilon(episode_i)
         
         #update the target networks
-        self.UpdateTargetNets(self.use_soft_updates)
+        if episode_i % self.target_net_update_freq == 0:
+            self.updateTargetNet(soft_update=self.use_soft_updates, source=self.critic , target=self.target_critic)
+            self.updateTargetNet(soft_update=self.use_soft_updates, source=self.actor , target=self.target_actor)
                 
         return losses 
     
@@ -454,22 +443,3 @@ class MPOAgent(Agent):
         os.makedirs(directory, exist_ok = True)
         torch.save(checkpoint, file_path)
         print(f"Actor and Critic weights saved successfully!")
-    
-    def UpdateTargetNets(self, soft_update: bool) -> None:
-        """
-        Updates the target network with the weights of the original one
-        If soft_update is True, we perform a soft update via \tau \cdot \theta + (1 - \tau) \cdot \theta'
-        """
-        assert self.use_target_net == True
-        with torch.no_grad():
-            for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
-                target_param.data.copy_(
-                    param.data * self.tau + target_param.data * (1 - self.tau) if soft_update #Soft update
-                    else param.data #Hard update
-                )
-            for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
-                target_param.data.copy_(
-                    param.data * self.tau + target_param.data * (1 - self.tau) if soft_update 
-                    else param.data
-                )
-
