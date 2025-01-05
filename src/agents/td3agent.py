@@ -1,5 +1,6 @@
 import os
 
+import gymnasium
 import numpy as np
 import torch
 from torch import device, nn
@@ -75,7 +76,7 @@ class TD3Agent(Agent):
         self.isEval = None
         
         self.observation_space = observation_space
-        self.state_shape = observation_space.shape[0]
+        self.state_shape = observation_space
         self.action_space = action_space
         self.action_low = torch.tensor(action_space.low, dtype=torch.float32, device=self.device)
         self.action_high = torch.tensor(action_space.high, dtype=torch.float32, device=self.device)

@@ -215,7 +215,7 @@ class MPOAgent(Agent):
                     
                 return action.item()
         
-   def critic_update(self, states, actions, dones, next_states, rewards):
+    def critic_update(self, states, actions, dones, next_states, rewards):
         """ 
         Compute the temporal difference loss for the critic network
         
@@ -330,7 +330,7 @@ class MPOAgent(Agent):
             states, actions, rewards, next_states, dones, _ = memory.sample(batch_size = self.batch_size, randomly = True)
             
             # 1: Policy Evaluation: Update Critic (Q-function)
-            loss_critic = self.update_critic_td(states, actions, dones, next_states, rewards)
+            loss_critic = self.critic_update(states, actions, dones, next_states, rewards)
             # Backward pass in the critic network
             self.critic_optimizer.zero_grad()
             loss_critic.backward()

@@ -79,7 +79,7 @@ def initAgent(use_algo: str, env,
     elif use_algo == TD3_ALGO:
         state_space_shape: tuple[int, ...] = env.observation_space.shape
         action_space: tuple[int, ...] = env.action_space
-        return TD3Agent(observation_size = state_space_shape[0], action_space = action_space,
+        return TD3Agent(observation_space = state_space_shape[0], action_space = action_space,
                         agent_settings = agent_settings, td3_settings = td3_settings, device = device)
     elif use_algo == SAC_ALGO:
         state_space_shape: tuple[int, ...] = env.observation_space.shape
