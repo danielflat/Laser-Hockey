@@ -96,7 +96,7 @@ def initAgent(use_algo: str, env,
         action_space: tuple[int, ...] = env.action_space
         return MPOAgent(
             state_dim = state_space_shape[0],
-            action_size = env.action_space.n,
+            action_space = env.action_space,
             agent_settings = agent_settings,
             device = device,
             mpo_settings = mpo_settings
