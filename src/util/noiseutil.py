@@ -57,55 +57,23 @@ class WhiteNoise:
 
 class PinkNoise:
     def __init__(self, shape, device: device):
-        """
-        Initialize the PinkNoise generator.
-
-        Args:
-            shape (tuple): Shape of the output noise (e.g., (num_channels, num_samples)).
-            device (str): Device to generate the noise ('cpu' or 'cuda').
-        """
         self.shape = shape
         self.device = device
-        self.num_samples = shape
-        self.num_channels = 1
-        # self.num_samples = shape[-1]
-        # self.num_channels = shape[0] if len(shape) > 1 else 1
 
-        # Ensure number of samples is even for FFT symmetry
-        if self.num_samples % 2 != 0:
-            self.num_samples += 1
+        # Is used to create the pink noise
+        self.prev_values = np.zeros(16)
 
-        # Frequency indices
-        self.freqs = torch.fft.rfftfreq(self.num_samples, d = 1.0).to(self.device)
-
-        # Scale by 1/f (avoid division by zero)
-        self.scale = 1.0 / torch.sqrt(self.freqs + (self.freqs[1] if self.freqs[1] > 0 else 1e-10))
-
-        # Initialize previous noise state
-        self.noise_prev = torch.zeros(self.shape, device = self.device)
-
-    def sample(self):
+    def sample(self) -> np.ndarray:
         """
-        Generate a new pink noise sample.
+        Generate one sample of pink noise using a recursive filter.
 
         Returns:
-            torch.Tensor: A tensor with the same shape as initialized containing pink noise.
+        - A single pink noise sample.
         """
-        # Random complex values for FFT coefficients
-        real_part = torch.randn(self.num_channels, len(self.freqs), device = self.device)
-        imag_part = torch.randn(self.num_channels, len(self.freqs), device = self.device)
 
-        # Combine real and imaginary parts
-        fft_coeffs = real_part + 1j * imag_part
+        white_sample = np.random.normal(loc = 0, scale = 1, size = self.shape)
+        self.prev_values[1:] = self.prev_values[:-1]
+        self.prev_values[0] = white_sample
 
-        # Apply the 1/f scaling
-        fft_coeffs *= self.scale
-
-        # Perform inverse FFT
-        pink_noise = torch.fft.irfft(fft_coeffs, n = self.num_samples)
-
-        # Trim to original size if adjusted for evenness
-        pink_noise = pink_noise[..., :self.num_samples - 1]
-
-        self.noise_prev = pink_noise
-        return pink_noise.squeeze(dim = -1)
+        pink_sample = (self.prev_values / (1 + np.arange(16))).sum()
+        return pink_sample / 4  # Normalization factor
