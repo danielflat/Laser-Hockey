@@ -146,8 +146,7 @@ class Critic(nn.Module):
                 nn.LeakyReLU(),
                 nn.Linear(hidden_dim, self.da),
             )
-
-
+ 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         """
         :param state: (B, ds)
@@ -175,12 +174,12 @@ class Critic(nn.Module):
     
     
 ################################################################################
-# Soft Actor-Critic Agent
+# Maximum a posteriori policy optimization (MPO) Agent
 ################################################################################
 
 class MPOAgent(Agent):
     """
-    The (discrete) MPO Agent. 
+    The MPO Agent. 
     This agent is largely based on the paper "Relative Entropy Regularized Policy Iteration" by Haarnoja et al. (2018)
     https://arxiv.org/pdf/1812.02256.pdf and the Github 
     https://github.com/daisatojp/mpo/blob/master/mpo/mpo.py
@@ -235,7 +234,7 @@ class MPOAgent(Agent):
         self.ε_dual = mpo_settings.get("DUAL_CONSTAINT", 0.1) 
         self.ε_kl = mpo_settings.get("KL_CONSTRAINT", 0.01) 
         self.ε_kl_μ = mpo_settings.get("KL_CONSTRAINT_MEAN", 0.01) 
-        self.ε_kl_Σ = mpo_settings.get("KL_CONSTRAINT_VAR", 0.0001) 
+        self.ε_kl_Σ = mpo_settings.get("KL_CONSTRAINT_VAR", 0.00001) 
         
         # Lagrange multipliers and dual variables
         self.α_scale = mpo_settings.get("ALPHA_SCALE", 10.0)
@@ -280,18 +279,24 @@ class MPOAgent(Agent):
         with torch.no_grad():
             if self.continuous:
                 π_µ, π_A = self.actor(state.unsqueeze(0))  # Get mean and covariance from the actor
-                # Define the action distribution as a multivariate Gaussian
-                π = MultivariateNormal(π_µ, scale_tril=π_A)  # (B, da)
-                # Sample action from the multivariate Gaussian
-                action = π.sample()
-                # Ensure actions are within the valid range
-                action = torch.clamp(action, self.action_low, self.action_high)
-                action = action.numpy()[0]
+                
+                if self.isEval:
+                    # if you are in eval mode, get the greedy Action
+                    action = π_µ.numpy()[0]
+                else:
+                    # Define the action distribution as a multivariate Gaussian
+                    π = MultivariateNormal(π_µ, scale_tril=π_A)  # (B, da)
+                    # Sample action from the multivariate Gaussian
+                    proposed_action = π.sample()
+                    #Add some noise
+                    noise = torch.randn_like(proposed_action) * self.epsilon
+                    # Ensure actions are within the valid range
+                    action = torch.clamp(proposed_action + noise, self.action_low, self.action_high)
+                    action = action.numpy()[0]
             else:
                 if self.isEval:
                     # if you are in eval mode, get the greedy Action
-                    greedy_action = self.actor.greedyAction(state)
-                    return greedy_action.item()
+                    action = self.actor.greedyAction(state).item()
                 else:
                     # In training mode, use epsilon greedy action sampling
                     rdn = np.random.random()
@@ -299,7 +304,7 @@ class MPOAgent(Agent):
                         # Exploration. Take a random action
                         return np.random.randint(low = 0, high = self.da)
                     else:
-                        # Exploitation. Take the actions w.r.t. the old policy
+                        # Exploitation. Take the actions w.r.t. the policy
                         π_p, _ = self.actor(state)
                         π = Categorical(probs=π_p) 
                         action = π.sample().item()
@@ -347,7 +352,7 @@ class MPOAgent(Agent):
                 expected_next_q = (π_p * next_q).sum(dim=1, keepdim=True).squeeze()  # (B,)
                 
             #TD target
-            q_new = rewards.squeeze() + self.discount * (1 - dones.squeeze()) * expected_next_q # (B)
+            q_new = rewards.squeeze() + self.discount * (1 - dones.squeeze()) * expected_next_q # (B,)
         
         #Calculate the loss
         if self.continuous:
@@ -406,20 +411,20 @@ class MPOAgent(Agent):
         C_Σ = 0.5 * torch.mean(inner_Σ)
         return C_μ, C_Σ, torch.mean(Σi_det), torch.mean(Σ_det)
 
-    def find_qij_dist(self, q_target: torch.Tensor, π_target_np: torch.Tensor) -> torch.Tensor:
+    def find_qij_dist(self, q_target: torch.Tensor, π_target: torch.Tensor) -> torch.Tensor:
         """
         Find the action weights qij by applying two value constraints in a nonparametric way:
         1. Keep qij close to the target q values. The distribution of qij can computed in closed form by minimizing the dual function
         2. Apply softmax over all actions to normalize q values
         :param q_target:
-            (K, N) the target q values
+            (K, da) or (K, N) the target q values
         :param π_target_np:
             (K, da) the target policy probabilities, only used in the discrete case
         """
-        if self.continuous:
-            q_target_np = q_target.numpy() # (da, K)
-        else:
-            q_target_np = q_target.T.numpy() # (N, K) 
+        q_target_np = q_target.numpy()
+        if not self.continuous:
+            π_target_np = π_target.numpy() 
+        #print(q_target_np.shape)
             
         def dual(η):
             """
@@ -512,7 +517,7 @@ class MPOAgent(Agent):
                         sampled_actions.reshape(-1, self.da)  # (N * K, da)
                     ).reshape(N, K)  # (N, K)
                     #Minimize the dual function to find the action weights qij
-                    qij = self.find_qij_dist(target_q, None) # (K, da) 
+                    qij = self.find_qij_dist(target_q.T, None) # (K, N) 
                 else:
                     #Here we also get the policy output first, but again we dont sample 
                     b, _ = self.target_actor(states) # (K, da)
@@ -522,9 +527,8 @@ class MPOAgent(Agent):
                     #Get the target q values over all discrete actions
                     target_q = self.target_critic(states, None) # (K, da)
                     #Minimize the dual function to find the action weights qij
-                    qij = self.find_qij_dist(target_q, b_p.T.numpy()) # (K, N) 
+                    qij = self.find_qij_dist(target_q, b_p) # (K, N) 
                     #transpose the qij matrix for later computations
-                    qi = qij.T  # (N, K) 
 
             # 3. M step. Policy Improvement (4.2 in paper)
             #Fitting an improved policy using the sampled q-values via gradient optimization on the Policy and the lagrangian function 
@@ -552,7 +556,7 @@ class MPOAgent(Agent):
                     #First we compute the known MLE Loss without the KL constraints (similar to PPO). 
                     #Note that here we have 2 actor objectives, so we have to compute the log prob for both
                     loss_MLE = torch.mean(
-                        qij * (
+                        qij.T * (
                             π1.expand((N, K)).log_prob(sampled_actions)  # (N, K)
                             + π2.expand((N, K)).log_prob(sampled_actions)  # (N, K)
                         )
@@ -594,8 +598,12 @@ class MPOAgent(Agent):
                     nn.utils.clip_grad_norm_(self.actor.parameters(), self.gradient_clipping_value)
                 self.actor_optimizer.step()
             
+            
             #Keep track of the losses
             losses.append([loss_critic.item(), loss_MLE.item(), loss_actor.item()])
+            
+        #Update the epsilon value
+        self.adjust_epsilon(episode_i)
         
         #update the target networks
         if episode_i % self.target_net_update_freq == 0:
