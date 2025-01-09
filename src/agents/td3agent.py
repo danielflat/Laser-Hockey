@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 import numpy as np
 import torch
@@ -176,10 +177,10 @@ class TD3Agent(Agent):
                 next_action = self.Actor.forward(next_state) * self.action_scale + self.action_bias
                 next_action = torch.clamp(
                     next_action + noise,
-                    min=self.action_low, #Minimum action value
-                    max=self.action_high) #Maximum action value
+                    min = self.action_low,  # Minimum action value
+                    max = self.action_high)  # Maximum action value
 
-                #2. Forward pass for both Q networks
+                # 2. Forward pass for both Q networks
                 q_prime1 = self.Critic1.forward(next_state, next_action)
                 q_prime2 = self.Critic2.forward(next_state, next_action)
 
@@ -234,7 +235,7 @@ class TD3Agent(Agent):
         #after each optimization, update actor and critic target networks
         if episode_i % self.target_net_update_freq == 0 and self.use_target_net:
             self._copy_nets(soft_update = self.use_soft_updates)
-        
+
         return losses
 
     def setMode(self, eval=False) -> None:
@@ -310,7 +311,6 @@ class TD3Agent(Agent):
                 self.Critic1_target.load_state_dict(self.Critic1.state_dict())
                 self.Critic2_target.load_state_dict(self.Critic2.state_dict())
                 self.Actor_target.load_state_dict(self.Actor.state_dict())
-
 
     def import_checkpoint(self, checkpoint: dict) -> None:
         raise NotImplementedError

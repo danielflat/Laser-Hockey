@@ -1,16 +1,14 @@
 import os
+
 import numpy as np
-from scipy.optimize import minimize
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from scipy.optimize import minimize
+from torch.distributions import Categorical, MultivariateNormal
 
-from torch.nn.utils import clip_grad_norm_
-from torch.distributions import MultivariateNormal, Categorical
-
+from src.agent import Agent
 from src.replaymemory import ReplayMemory
-from src.util.constants import ADAM, MSELOSS, LINEAR, EXPONENTIAL
-from src.agent import Agent 
 from src.util.directoryutil import get_path
 
 
@@ -24,7 +22,8 @@ class Actor(nn.Module):
     - Cholesky layer outputs the lower triangular matrix of the covariance matrix with size (da, da), 
     thus the output size is (da*(da+1))//2
     """
-    def __init__(self, state_dim: int, action_space, hidden_dim: int, continuous: bool):
+
+    def __init__(self, state_dim: int, action_space, action_size: int, hidden_dim: int, continuous: bool):
         super().__init__()
         self.continuous = continuous
         self.ds = state_dim
@@ -35,7 +34,7 @@ class Actor(nn.Module):
             self.action_low = torch.tensor(action_space.low)
             self.action_high = torch.tensor(action_space.high)
         else:
-            self.da = action_space.n
+            self.da = action_size
         
         #Feedforward network
         self.net = nn.Sequential(
@@ -122,14 +121,15 @@ class Critic(nn.Module):
     - Output layer for the Q value over all possible discrete actions da
     :param env: OpenAI gym environment
     """
-    def __init__(self, state_dim: int, action_space: int, hidden_dim: int, continuous: bool):
+
+    def __init__(self, state_dim: int, action_space: int, action_size: int, hidden_dim: int, continuous: bool):
         super(Critic, self).__init__()
         self.continuous = continuous
         self.ds = state_dim
         if self.continuous:
             self.da = int(np.prod(action_space.shape))
         else:
-            self.da = action_space.n
+            self.da = action_size
         if self.continuous:
             self.net = nn.Sequential(
                 nn.Linear(self.ds + self.da, hidden_dim),
@@ -210,7 +210,8 @@ class MPOAgent(Agent):
     Note: There are even more new hyperparameters like alpha_mu_max, which i hardcoded to keep the implementation simple
     
     """
-    def __init__(self, agent_settings, device, state_dim, action_space, mpo_settings):
+
+    def __init__(self, agent_settings, device, state_space, action_space, mpo_settings):
         super().__init__(agent_settings, device)
         
         #Continous or discrete action space
@@ -220,13 +221,15 @@ class MPOAgent(Agent):
 
         self.device = device
         self.action_space = action_space
-        self.ds = state_dim  # State space dimensions
+        state_size = state_space.shape[0]
+
+        self.ds = state_size  # State space dimensions
         if self.continuous:
             self.da = int(np.prod(action_space.shape))
             self.action_low = torch.tensor(action_space.low)
             self.action_high = torch.tensor(action_space.high)
         else:
-            self.da = action_space.n
+            self.da = self.get_num_actions(action_space)
         
         self.hidden_dim = mpo_settings.get("HIDDEN_DIM", 256) 
         self.sample_action_num = mpo_settings.get("SAMPLE_ACTION_NUM", 128) #N
@@ -251,10 +254,10 @@ class MPOAgent(Agent):
         self.η_Σ_kl = 0.0 #continuous M step
 
         #Set up the actor and critic networks
-        self.actor = Actor(state_dim, action_space, self.hidden_dim, self.continuous).to(device)
-        self.critic = Critic(state_dim, action_space, self.hidden_dim, self.continuous).to(device)
-        self.target_actor = Actor(state_dim, action_space, self.hidden_dim, self.continuous).to(device)
-        self.target_critic = Critic(state_dim, action_space, self.hidden_dim, self.continuous).to(device)
+        self.actor = Actor(state_size, action_space, self.da, self.hidden_dim, self.continuous).to(device)
+        self.critic = Critic(state_size, action_space, self.da, self.hidden_dim, self.continuous).to(device)
+        self.target_actor = Actor(state_size, action_space, self.da, self.hidden_dim, self.continuous).to(device)
+        self.target_critic = Critic(state_size, action_space, self.da, self.hidden_dim, self.continuous).to(device)
         self.target_actor.load_state_dict(self.actor.state_dict())
         self.target_critic.load_state_dict(self.critic.state_dict())
 
@@ -651,3 +654,9 @@ class MPOAgent(Agent):
         os.makedirs(directory, exist_ok = True)
         torch.save(checkpoint, file_path)
         print(f"Actor and Critic weights saved successfully!")
+
+    def import_checkpoint(self, checkpoint: dict) -> None:
+        raise NotImplementedError
+
+    def export_checkpoint(self) -> dict:
+        raise NotImplementedError
