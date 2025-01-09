@@ -54,7 +54,7 @@ SETTINGS = {
         # TARGET NET STRATEGY
         "USE_TARGET_NET": True,  # If a target net is used
         "USE_SOFT_UPDATES": False,  # If the target network is updated. True = softly, False = hardly
-        "TARGET_NET_UPDATE_FREQ": 100,
+        "TARGET_NET_UPDATE_FREQ": 10,
         # int: Gives the frequency when to update the target net. If target net is disabled, this param is not relevant. If == 1, you update at every step.
         "TAU": 0.001,  # Soft update parameter
 
@@ -67,8 +67,8 @@ SETTINGS = {
         # If EPSILON_DECAY_STRATEGY == Linear, it determines either the amount of episodes until `EPSILON_MIN`. If EPSILON_DECAY_STRATEGY == EXPONENTIAL, it determines the rate of decay per episode. (if EXPONENTIAL: =1 in this case means no decay)
 
         # BACKWARD STEP STRATEGY
-        "USE_GRADIENT_CLIPPING": False,  # If the gradients should be clipped
-        "GRADIENT_CLIPPING_VALUE": 1.0,  # The gradient clipping value
+        "USE_GRADIENT_CLIPPING": True,  # If the gradients should be clipped
+        "GRADIENT_CLIPPING_VALUE": 0.1,  # The gradient clipping value
         "USE_CLIP_FOREACH": torch.cuda.is_available(),
         # USE the foreach implementation of gradient clipping. Only relevant if 'USE_GRADIENT_CLIPPING' is True
     },
@@ -89,7 +89,7 @@ SETTINGS = {
         "ACTOR": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,
-                "LEARNING_RATE": 0.00001,  # The learning rate for the agent
+                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
                 "WEIGHT_DECAY": 1e-2,  # The weight decay rate
@@ -101,7 +101,7 @@ SETTINGS = {
         "CRITIC": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,  # Which optimizer to use
-                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
+                "LEARNING_RATE": 0.001,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
                 "WEIGHT_DECAY": 1e-2,  # The weight decay rate
@@ -123,12 +123,44 @@ SETTINGS = {
                 "DT": 1e-2,
             }
         }
-
     },
     # The specific settings for the TD3 agent
     "TD3": {
-        "OPTIMIZER": _DEFAULT_OPTIMIZER,
-        "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
+        "ACTOR": {
+            "OPTIMIZER": {
+                "OPTIM_NAME": ADAM,
+                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
+                "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
+                "EPS": 1e-8,  # eps Adam param
+                "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+                "USE_FUSION": torch.cuda.is_available()
+            },
+        },
+        # Specific settings for the critic network
+        "CRITIC": {
+            "OPTIMIZER": {
+                "OPTIM_NAME": ADAM,  # Which optimizer to use
+                "LEARNING_RATE": 0.001,  # The learning rate for the agent
+                "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
+                "EPS": 1e-8,  # eps Adam param
+                "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+                "USE_FUSION": torch.cuda.is_available()
+            },
+            "LOSS_FUNCTION": SMOOTH_L1_LOSS,
+        },
+        "NOISE": {
+            "NOISE_TYPE": PINK_NOISE,
+            "NOISE_FACTOR": 0.1,
+            "NOISE_PARAMS": {
+                # Params for white and pink noise
+                "MEAN": 0,  # only important for white noise
+                "STD": 0.1,
+
+                # Params for OU noise
+                "THETA": 0.15,
+                "DT": 1e-2,
+            },
+        },
         "POLICY_DELAY": 2,  # The delay of the policy optimization
         "NOISE_CLIP": 1,  # The gaussian noise clip value
     },
@@ -141,14 +173,34 @@ SETTINGS = {
         "HIDDEN_DIM": 256
     },
     "MPO": {
+        "ACTOR": {
+            "OPTIMIZER": {
+                "OPTIM_NAME": ADAM,
+                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
+                "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
+                "EPS": 1e-8,  # eps Adam param
+                "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+                "USE_FUSION": torch.cuda.is_available()
+            },
+        },
+        # Specific settings for the critic network
+        "CRITIC": {
+            "OPTIMIZER": {
+                "OPTIM_NAME": ADAM,  # Which optimizer to use
+                "LEARNING_RATE": 0.001,  # The learning rate for the agent
+                "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
+                "EPS": 1e-8,  # eps Adam param
+                "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+                "USE_FUSION": torch.cuda.is_available()
+            },
+            "LOSS_FUNCTION": SMOOTH_L1_LOSS,
+        },
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
         "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
-        "HIDDEN_DIM": 64,
-        "SAMPLE_ACTION_NUM": 10,
-        "DUAL_CONSTAINT": 0.1,
-        "KL_CONSTRAINT": 0.01,
-        "MSTEP_ITER": 10,
-        "ALPHA_SCALE": 1.0
+        "SAMPLE_ACTION_NUM": 64, #Number of actions to sample for nonparametric policy optimization
+        "MSTEP_ITER": 1,
+        "DISCRETE": False 
+        #All other Hyperparameters are set in the MPO class
     }
 }
 
