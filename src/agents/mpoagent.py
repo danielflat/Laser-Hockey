@@ -1,4 +1,5 @@
 import os
+import logging
 import numpy as np
 from scipy.optimize import minimize
 import torch
@@ -8,11 +9,14 @@ import torch.nn.functional as F
 from torch.nn.utils import clip_grad_norm_
 from torch.distributions import MultivariateNormal, Categorical
 
-from src.replaymemory import ReplayMemory
-from src.util.constants import ADAM, MSELOSS, LINEAR, EXPONENTIAL
 from src.agent import Agent 
+from src.replaymemory import ReplayMemory
+from src.util.constants import ADAM, MSE_LOSS, LINEAR, EXPONENTIAL
 from src.util.directoryutil import get_path
-
+from src.util.noiseutil import initNoise
+"""
+Author : Andre Pfrommer
+"""
 
 class Actor(nn.Module):
     """
@@ -24,10 +28,10 @@ class Actor(nn.Module):
     - Cholesky layer outputs the lower triangular matrix of the covariance matrix with size (da, da), 
     thus the output size is (da*(da+1))//2
     """
-    def __init__(self, state_dim: int, action_space, hidden_dim: int, continuous: bool):
+    def __init__(self, state_space, action_space, hidden_dim: int, continuous: bool):
         super().__init__()
         self.continuous = continuous
-        self.ds = state_dim
+        self.ds = state_space.shape[0]
         
         #shape = (1, da)
         if self.continuous:
@@ -122,10 +126,10 @@ class Critic(nn.Module):
     - Output layer for the Q value over all possible discrete actions da
     :param env: OpenAI gym environment
     """
-    def __init__(self, state_dim: int, action_space: int, hidden_dim: int, continuous: bool):
+    def __init__(self, state_space, action_space: int, hidden_dim: int, continuous: bool):
         super(Critic, self).__init__()
         self.continuous = continuous
-        self.ds = state_dim
+        self.ds = state_space.shape[0]
         if self.continuous:
             self.da = int(np.prod(action_space.shape))
         else:
@@ -169,7 +173,7 @@ class Critic(nn.Module):
         assert not self.continuous
         
         all_q_values = self.forward(state, action) # (B, da)
-        q_value = all_q_values.gather(dim=1, index=action)
+        q_value = all_q_values.gather(dim=1, index=action) # (B, 1)
         return q_value
     
     
@@ -210,17 +214,19 @@ class MPOAgent(Agent):
     Note: There are even more new hyperparameters like alpha_mu_max, which i hardcoded to keep the implementation simple
     
     """
-    def __init__(self, agent_settings, device, state_dim, action_space, mpo_settings):
+    def __init__(self, agent_settings, device, state_space, action_space, mpo_settings):
         super().__init__(agent_settings, device)
         
         #Continous or discrete action space
-        self.continuous = False
-        if mpo_settings.get("CONTINUOUS", False):
-            self.continuous = True
+        self.continuous = True
+        if mpo_settings.get("DISCRETE", False):
+            self.continuous = False
 
         self.device = device
         self.action_space = action_space
-        self.ds = state_dim  # State space dimensions
+        self.state_space = state_space
+        
+        self.ds = self.state_space.shape[0]
         if self.continuous:
             self.da = int(np.prod(action_space.shape))
             self.action_low = torch.tensor(action_space.low)
@@ -229,19 +235,19 @@ class MPOAgent(Agent):
             self.da = action_space.n
         
         self.hidden_dim = mpo_settings.get("HIDDEN_DIM", 256) 
-        self.sample_action_num = mpo_settings.get("SAMPLE_ACTION_NUM", 128) #N
+        self.sample_action_num = mpo_settings.get("SAMPLE_ACTION_NUM", 64) #N
         self.mstep_iteration_num = mpo_settings.get("MSTEP_ITER", 1)
         self.ε_dual = mpo_settings.get("DUAL_CONSTAINT", 0.1) 
         self.ε_kl = mpo_settings.get("KL_CONSTRAINT", 0.01) 
         self.ε_kl_μ = mpo_settings.get("KL_CONSTRAINT_MEAN", 0.01) 
-        self.ε_kl_Σ = mpo_settings.get("KL_CONSTRAINT_VAR", 0.00001) 
+        self.ε_kl_Σ = mpo_settings.get("KL_CONSTRAINT_VAR", 0.0001) 
         
         # Lagrange multipliers and dual variables
         self.α_scale = mpo_settings.get("ALPHA_SCALE", 10.0)
         self.α_μ_scale = mpo_settings.get("ALPHA_SCALE_MU", 1.0)
         self.α_Σ_scale = mpo_settings.get("ALPHA_SCALE_VAR", 100.0)
         self.α_max = mpo_settings.get("ALPHA_MAX", 1.0)
-        self.α_μ_max = mpo_settings.get("ALPHA_MAX_MU", 1.0)
+        self.α_μ_max = mpo_settings.get("ALPHA_MAX_MU", 0.1)
         self.α_Σ_max = mpo_settings.get("ALPHA_MAX_VAR", 10.0)
         
         #initialize variables to optimize
@@ -251,22 +257,27 @@ class MPOAgent(Agent):
         self.η_Σ_kl = 0.0 #continuous M step
 
         #Set up the actor and critic networks
-        self.actor = Actor(state_dim, action_space, self.hidden_dim, self.continuous).to(device)
-        self.critic = Critic(state_dim, action_space, self.hidden_dim, self.continuous).to(device)
-        self.target_actor = Actor(state_dim, action_space, self.hidden_dim, self.continuous).to(device)
-        self.target_critic = Critic(state_dim, action_space, self.hidden_dim, self.continuous).to(device)
+        self.actor = Actor(state_space, action_space, self.hidden_dim, self.continuous).to(device)
+        self.critic = Critic(state_space, action_space, self.hidden_dim, self.continuous).to(device)
+        self.target_actor = Actor(state_space, action_space, self.hidden_dim, self.continuous).to(device)
+        self.target_critic = Critic(state_space, action_space, self.hidden_dim, self.continuous).to(device)
         self.target_actor.load_state_dict(self.actor.state_dict())
         self.target_critic.load_state_dict(self.critic.state_dict())
 
-        #Set up the optimizers
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), 
-                                                lr = 0.0001, eps = 0.000001,
-                                                )
-        self.critic_optimizer =  torch.optim.Adam(self.critic.parameters(), 
-                                                  lr = 0.001, eps = 0.000001)
+        # Initializing the optimizers
+        self.actor_optimizer = self.initOptim(optim = mpo_settings["ACTOR"]["OPTIMIZER"],
+                                           parameters = self.actor.parameters())
+        self.critic_optimizer = self.initOptim(optim = mpo_settings["CRITIC"]["OPTIMIZER"],
+                                           parameters = self.critic.parameters())
+
+        #Define Loss function
+        self.criterion = self.initLossFunction(loss_name = mpo_settings["CRITIC"]["LOSS_FUNCTION"])
         
-        #Define the loss function for the crtic
-        self.norm_loss_q = nn.SmoothL1Loss()
+    def __repr__(self):
+        """
+        For printing purposes only
+        """
+        return f"MPOAgent"
         
     def act(self, state: torch.Tensor):
         """
@@ -360,7 +371,7 @@ class MPOAgent(Agent):
         else:
             q = self.critic.QValue(states, actions).squeeze()# (B,)
             
-        loss = self.norm_loss_q(q_new, q) #(B, B)
+        loss = self.criterion(q_new, q) #(B, B)
         return loss, q_new
     
     def categorical_kl(self, p1, p2):
@@ -478,10 +489,6 @@ class MPOAgent(Agent):
         :return:    
             (list[float]) the losses of the actor and critic networks
         """
-        #assert self.isEval == False
-        #Sampling the whole trajectory will give us better optimization since we maximize the nr of sampled q values in the E step (works esp good on Cartpole env)
-        #Feel free to change this to a fixed batch size
-        self.batch_size = min(len(memory), 265)
         losses = []
         
         #Nr of actions to sample per state, irrelevant for discrete action spacessince we select all da actions per state
@@ -517,7 +524,7 @@ class MPOAgent(Agent):
                         sampled_actions.reshape(-1, self.da)  # (N * K, da)
                     ).reshape(N, K)  # (N, K)
                     #Minimize the dual function to find the action weights qij
-                    qij = self.find_qij_dist(target_q.T, None) # (K, N) 
+                    qij = self.find_qij_dist(target_q.transpose(0, 1), None) # (K, N) 
                 else:
                     #Here we also get the policy output first, but again we dont sample 
                     b, _ = self.target_actor(states) # (K, da)
@@ -556,7 +563,7 @@ class MPOAgent(Agent):
                     #First we compute the known MLE Loss without the KL constraints (similar to PPO). 
                     #Note that here we have 2 actor objectives, so we have to compute the log prob for both
                     loss_MLE = torch.mean(
-                        qij.T * (
+                        qij.transpose(0, 1) * (
                             π1.expand((N, K)).log_prob(sampled_actions)  # (N, K)
                             + π2.expand((N, K)).log_prob(sampled_actions)  # (N, K)
                         )
@@ -607,8 +614,7 @@ class MPOAgent(Agent):
         
         #update the target networks
         if episode_i % self.target_net_update_freq == 0:
-            self.updateTargetNet(soft_update=self.use_soft_updates, source=self.critic , target=self.target_critic)
-            self.updateTargetNet(soft_update=self.use_soft_updates, source=self.actor , target=self.target_actor)
+            self._copy_nets()
                 
         return losses 
     
@@ -623,31 +629,57 @@ class MPOAgent(Agent):
         else:
             self.actor.train()
             self.critic.train()
-    def loadModel(self, file_name: str) -> None:
-        """
-        Loads the model parameters of the agent.
-        """
-        checkpoint = torch.load(file_name, map_location=self.device)
-        self.actor.load_state_dict(checkpoint["actor"])
-        self.critic.load_state_dict(checkpoint["critic"])
-        self.target_policy.load_state_dict(checkpoint["target_policy"])
-        self.target_critic.load_state_dict(checkpoint["target_critic"])
-        print(f"Model loaded from {file_name}")
-
+        
+    
     def saveModel(self, model_name: str, iteration: int) -> None:
         """
         Saves the model parameters of the agent.
         """
-        checkpoint = {
-            "actor": self.actor.state_dict(),
-            "critic": self.critic.state_dict(),
-            "target_critic": self.target_critic.state_dict(),
-            "target_policy": self.target_actor.state_dict(),
-            "iteration": iteration
-        }
+        checkpoint = self.export_checkpoint()
 
         directory = get_path(f"output/checkpoints/{model_name}")
         file_path = os.path.join(directory, f"{model_name}_{iteration:05}.pth")
+
+        # Ensure the directory exists
         os.makedirs(directory, exist_ok = True)
+
         torch.save(checkpoint, file_path)
-        print(f"Actor and Critic weights saved successfully!")
+        logging.info(f"Iteration: {iteration} MPO checkpoint saved successfully!")
+        
+    def loadModel(self, file_name: str) -> None:
+        """
+        Loads the model parameters of the agent.
+        """
+        try:
+            checkpoint = torch.load(file_name, map_location=self.device)
+            self.import_checkpoint(checkpoint)
+            logging.info(f"Model loaded successfully from {file_name}")
+        except FileNotFoundError:
+            logging.error(f"Error: File {file_name} not found.")
+        except Exception as e:
+            logging.error(f"An error occurred while loading the model: {str(e)}")
+
+    def _copy_nets(self) -> None:
+        assert self.use_target_net == True
+        # Step 01: Copy the actor net
+        self.updateTargetNet(soft_update = self.use_soft_updates, source = self.actor,
+                             target = self.target_actor)
+
+        # Step 02: Copy the critic net
+        self.updateTargetNet(soft_update = self.use_soft_updates, source = self.critic,
+                             target = self.target_critic)
+    
+    def import_checkpoint(self, checkpoint: dict) -> None:
+        self.actor.load_state_dict(checkpoint["origin_actor"])
+        self.critic.load_state_dict(checkpoint["origin_critic"])
+        self.target_actor.load_state_dict(checkpoint["target_actor"])
+        self.target_critic.load_state_dict(checkpoint["target_critic"])
+
+    def export_checkpoint(self) -> dict:
+        checkpoint = {
+            "actor": self.actor.state_dict(),
+            "critic": self.critic.state_dict(),
+            "target_actor": self.target_actor.state_dict(),
+            "target_critic": self.target_critic.state_dict(),
+        }
+        return checkpoint
