@@ -1,3 +1,5 @@
+from typing import List
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -5,7 +7,7 @@ import numpy as np
 plt.ion()
 
 
-def plot_training_metrics(episode_durations: list[int], episode_rewards: list[float], episode_losses: list,
+def plot_training_metrics(episode_durations: List[int], episode_rewards: List[float], episode_losses: list,
                           current_episode: int, episode_update_iter: int):
     """
     Dynamically updates the plots for training metrics.

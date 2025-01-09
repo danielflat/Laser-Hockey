@@ -10,11 +10,13 @@ def get_repo_path():
         repo_path = subprocess.check_output(['git', 'rev-parse', '--show-toplevel']).strip().decode('utf-8')
         return repo_path
     except subprocess.CalledProcessError:
-        return None
+        return "/mnt/beegfs/home/stud204/Project_RL"  # not a good style but it has to work on the cluster
+        # return None
 
 
 def get_path(directory):
     """
     Here you can construct the path for a resource with respect to the repository main directory.
     """
-    return os.path.join(get_repo_path(), directory)
+    repo_path = get_repo_path()
+    return os.path.join(repo_path, directory)

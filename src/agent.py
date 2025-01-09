@@ -1,11 +1,14 @@
 from abc import ABC, abstractmethod
+from typing import List
 
+import gymnasium
 import numpy as np
 import torch
 from torch import nn
 
 from src.replaymemory import ReplayMemory
-from src.util.constants import ADAM, ADAMW, EXPONENTIAL, L1, LINEAR, MSELOSS, SMOOTHL1, SUPPORTED_LOSS_FUNCTIONS, \
+from src.util.constants import ADAM, ADAMW, CROSS_ENTROPY_LOSS, EXPONENTIAL, L1_LOSS, LINEAR, MSE_LOSS, SMOOTH_L1_LOSS, \
+    SUPPORTED_LOSS_FUNCTIONS, \
     SUPPORTED_OPTIMIZERS
 
 
@@ -40,7 +43,7 @@ class Agent(ABC):
         pass
 
     @abstractmethod
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         pass
 
     @abstractmethod
@@ -63,6 +66,14 @@ class Agent(ABC):
         """
         Loads the model parameters of the agent.
         """
+        pass
+
+    @abstractmethod
+    def import_checkpoint(self, checkpoint: dict) -> None:
+        pass
+
+    @abstractmethod
+    def export_checkpoint(self) -> dict:
         pass
 
     def adjust_epsilon(self, episode_i: int) -> None:
@@ -108,12 +119,14 @@ class Agent(ABC):
         :return: the loss function object
         """
         if loss_name in SUPPORTED_LOSS_FUNCTIONS:
-            if loss_name == L1:
+            if loss_name == L1_LOSS:
                 return nn.L1Loss()
-            elif loss_name == SMOOTHL1:
+            elif loss_name == SMOOTH_L1_LOSS:
                 return nn.SmoothL1Loss()
-            elif loss_name == MSELOSS:
+            elif loss_name == MSE_LOSS:
                 return nn.MSELoss()
+            elif loss_name == CROSS_ENTROPY_LOSS:
+                return nn.CrossEntropyLoss()
         else:
             raise NotImplemented(f"The Loss function '{loss_name}' is not supported! Please choose another one!")
 
@@ -131,3 +144,16 @@ class Agent(ABC):
         else:
             # Do a hard parameter update. Copy all values from the origin to the target network
             target.load_state_dict(source.state_dict())
+
+    def get_num_actions(self, action_space):
+        if type(action_space) == gymnasium.spaces.box.Box:
+            action_size = action_space.shape[0]
+        elif type(action_space) == gymnasium.spaces.discrete.Discrete:
+            action_size = 1
+        else:
+            action_size = action_space.n
+
+        # In Hockey, the action size is 8, but we have 2 players -> Therefore the *real* action size is 4
+        if action_size == 8:
+            return 4
+        return action_size

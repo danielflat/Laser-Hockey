@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import List
 
 import gymnasium
 import numpy as np
@@ -57,18 +58,18 @@ class ActorCritic:
     A top level class that combines the actor and critic network.
     """
 
-    def __init__(self, observation_size: int, action_size: int, use_compile: bool, device: device):
+    def __init__(self, state_size: int, action_size: int, use_compile: bool, device: device):
         super().__init__()
 
-        self.actor = Actor(observation_size, action_size)
+        self.actor = Actor(state_size, action_size)
         self.actor.to(device)
 
-        self.critic = Critic(observation_size, action_size)
+        self.critic = Critic(state_size, action_size)
         self.critic.to(device)
 
-        if use_compile:
-            self.actor = torch.compile(self.actor)
-            self.critic = torch.compile(self.critic)
+        # if use_compile:
+        #     self.actor = torch.compile(self.actor)
+        #     self.critic = torch.compile(self.critic)
         # else:
         #     self.actor = actor
         #     self.critic = critic
@@ -106,19 +107,19 @@ class DDPGAgent(Agent):
         self.observation_space = observation_space
         self.action_space = action_space
         observation_size = observation_space.shape[0]
-        action_space = action_space.shape[0]
+        self.action_size = self.get_num_actions(action_space)
 
-        self.noise = initNoise(action_shape = action_space, noise_settings = ddpg_settings["NOISE"],
+        self.noise = initNoise(action_shape = (self.action_size,), noise_settings = ddpg_settings["NOISE"],
                                device = self.device)
         self.noise_factor = ddpg_settings["NOISE"]["NOISE_FACTOR"]
 
         # Define the Q-Network
-        self.origin_net = ActorCritic(observation_size = observation_size, action_size = action_space,
+        self.origin_net = ActorCritic(state_size = observation_size, action_size = self.action_size,
                                       use_compile = self.USE_COMPILE, device = self.device)
 
         # If you want to use a target network, it is defined here
         if self.use_target_net:
-            self.target_net = ActorCritic(observation_size = observation_size, action_size = action_space,
+            self.target_net = ActorCritic(state_size = observation_size, action_size = self.action_size,
                                           use_compile = self.USE_COMPILE, device = self.device)
             # Copy the networks
             self._copyNets()
@@ -131,6 +132,12 @@ class DDPGAgent(Agent):
 
         # Define Loss function
         self.criterion = self.initLossFunction(loss_name = ddpg_settings["CRITIC"]["LOSS_FUNCTION"])
+
+    def __repr__(self):
+        """
+        For printing purposes only
+        """
+        return f"DDPGAgent"
 
 
     def act(self, state: torch.Tensor) -> np.ndarray:
@@ -146,18 +153,20 @@ class DDPGAgent(Agent):
         with torch.no_grad():
             if self.isEval:
                 greedy_action = self.origin_net.greedyAction(state)
-                return greedy_action.detach().numpy()
+                return greedy_action.detach().cpu().numpy()
 
             # In training mode, use epsilon greedy action sampling
             elif not self.isEval:
                 proposed_action = self.origin_net.greedyAction(state)
                 noise = self.noise_factor * self.noise.sample()
                 noisy_action = proposed_action + noise
-                normalized_action = self.action_space.low + (noisy_action.detach().numpy() + 1.0) / 2.0 * (
-                        self.action_space.high - self.action_space.low)
+                normalized_action = self.action_space.low[:self.action_size] + (
+                            noisy_action.detach().cpu().numpy() + 1.0) / 2.0 * (
+                                            self.action_space.high[:self.action_size] - self.action_space.low[
+                                                                                        :self.action_size])
                 return normalized_action
 
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         losses = []
 
         for i in range(1, self.opt_iter + 1):
@@ -252,12 +261,7 @@ class DDPGAgent(Agent):
         Saves the model parameters of the agent.
         """
 
-        checkpoint = {
-            "origin_actor": self.origin_net.actor.state_dict(),
-            "origin_critic": self.origin_net.critic.state_dict(),
-            "target_actor": self.target_net.actor.state_dict(),
-            "target_critic": self.target_net.critic.state_dict(),
-        }
+        checkpoint = self.export_checkpoint()
 
         directory = get_path(f"output/checkpoints/{model_name}")
         file_path = os.path.join(directory, f"{model_name}_{iteration:05}.pth")
@@ -274,15 +278,27 @@ class DDPGAgent(Agent):
         """
         try:
             checkpoint = torch.load(file_name, map_location = self.device)
-            self.origin_net.actor.load_state_dict(checkpoint["origin_actor"])
-            self.origin_net.critic.load_state_dict(checkpoint["origin_critic"])
-            self.target_net.actor.load_state_dict(checkpoint["target_actor"])
-            self.target_net.critic.load_state_dict(checkpoint["target_critic"])
+            self.import_checkpoint(checkpoint)
             logging.info(f"Model loaded successfully from {file_name}")
         except FileNotFoundError:
             logging.error(f"Error: File {file_name} not found.")
         except Exception as e:
             logging.error(f"An error occurred while loading the model: {str(e)}")
+
+    def import_checkpoint(self, checkpoint: dict) -> None:
+        self.origin_net.actor.load_state_dict(checkpoint["origin_actor"])
+        self.origin_net.critic.load_state_dict(checkpoint["origin_critic"])
+        self.target_net.actor.load_state_dict(checkpoint["target_actor"])
+        self.target_net.critic.load_state_dict(checkpoint["target_critic"])
+
+    def export_checkpoint(self) -> dict:
+        checkpoint = {
+            "origin_actor": self.origin_net.actor.state_dict(),
+            "origin_critic": self.origin_net.critic.state_dict(),
+            "target_actor": self.target_net.actor.state_dict(),
+            "target_critic": self.target_net.critic.state_dict(),
+        }
+        return checkpoint
 
 
 

@@ -1,15 +1,50 @@
 import logging
 import os
-from typing import List
+from typing import List, Tuple
 
-import gymnasium
 import numpy as np
-import torch
-from torch import nn
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util.directoryutil import get_path
+
+"""
+This is a classification version of the dqn agent regarding the paper
+
+"Stop Regressing: Training Value Functions via
+Classification for Scalable Deep RL" https://arxiv.org/pdf/2403.03950
+
+Author: Daniel Flat
+"""
+
+import torch
+import torch.special
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class HLGaussLoss(nn.Module):
+    def __init__(self, min_value: float, max_value: float, num_bins: int, sigma: float):
+        super().__init__()
+        self.min_value = min_value
+        self.max_value = max_value
+        self.num_bins = num_bins
+        self.sigma = sigma
+        self.support = torch.linspace(min_value, max_value, num_bins + 1, dtype = torch.float32)
+
+    def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return F.cross_entropy(logits, self.transform_to_probs(target))
+
+    def transform_to_probs(self, target: torch.Tensor) -> torch.Tensor:
+        cdf_evals = torch.special.erf(
+            (self.support - target.unsqueeze(-1)) / (torch.sqrt(torch.tensor(2.0)) * self.sigma))
+        z = cdf_evals[..., -1] - cdf_evals[..., 0]
+        bin_probs = cdf_evals[..., 1:] - cdf_evals[..., :-1]
+        return bin_probs / z.unsqueeze(-1)
+
+    def transform_from_probs(self, probs: torch.Tensor) -> torch.Tensor:
+        centers = (self.support[:-1] + self.support[1:]) / 2
+        return torch.sum(probs * centers, dim = -1)
 
 
 class QFunction(nn.Module):
@@ -52,27 +87,26 @@ class QFunction(nn.Module):
             return greedyAction
 
 
-class DQNAgent(Agent):
-    def __init__(self, state_space: gymnasium.spaces.box.Box, action_space, agent_settings: dict, dqn_settings: dict,
+class ClassificationAgent(Agent):
+    def __init__(self, state_shape: Tuple[int, ...], action_size: int, agent_settings: dict,
+                 classification_settings: dict,
                  device: torch.device):
         super().__init__(agent_settings = agent_settings, device = device)
 
         self.isEval = None
 
-        self.state_shape = state_space
-        self.action_size = action_space
-        state_size = state_space.shape[0]
-        action_size = self.get_num_actions(action_space)
+        self.state_shape = state_shape
+        self.action_size = action_size
 
         # Define the Q-Network
-        self.Q = QFunction(state_size = state_size,
-                           hidden_size = 128,
-                           action_size = action_size)
+        self.Q = n(state_size = state_shape[0],
+                   hidden_size = 128,
+                   action_size = action_size)
         self.Q.to(self.device)
 
         # If you want to use a target network, it is defined here
         if self.use_target_net:
-            self.targetQ = QFunction(state_size = state_size,
+            self.targetQ = QFunction(state_size = state_shape[0],
                                      hidden_size = 128,
                                      action_size = action_size)
             self.targetQ.to(self.device)
@@ -80,22 +114,16 @@ class DQNAgent(Agent):
             self.updateTargetNet(soft_update = False, source = self.Q, target = self.targetQ)  # Copy the Q network
 
         # Define the Optimizer
-        self.optimizer = self.initOptim(optim = dqn_settings["OPTIMIZER"], parameters = self.Q.parameters())
+        self.optimizer = self.initOptim(optim = classification_settings["OPTIMIZER"], parameters = self.Q.parameters())
 
         # Define Loss function
-        self.criterion = self.initLossFunction(loss_name = dqn_settings["LOSS_FUNCTION"])
+        self.criterion = self.initLossFunction(loss_name = classification_settings["LOSS_FUNCTION"])
 
         # Activate torch.compile if wanted
         if self.USE_COMPILE:
             self.Q = torch.compile(self.Q)
             if self.use_target_net:
                 self.targetQ = torch.compile(self.targetQ)
-
-    def __repr__(self):
-        """
-        For printing purposes only
-        """
-        return f"DQNAgent"
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         """
@@ -213,9 +241,3 @@ class DQNAgent(Agent):
         """
         self.Q.load_state_dict(torch.load(file_name))
         logging.info(f"Q network weights loaded successfully!")
-
-    def import_checkpoint(self, checkpoint: dict) -> None:
-        raise NotImplementedError
-
-    def export_checkpoint(self) -> dict:
-        raise NotImplementedError
