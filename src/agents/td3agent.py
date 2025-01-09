@@ -307,3 +307,9 @@ class TD3Agent(Agent):
                     param.data * self.tau + target_param.data * (1 - self.tau) if soft_update
                     else param.data
                 )
+
+    def import_checkpoint(self, checkpoint: dict) -> None:
+        raise NotImplementedError
+
+    def export_checkpoint(self) -> dict:
+        raise NotImplementedError

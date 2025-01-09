@@ -29,9 +29,13 @@ class RandomAgent(Agent):
         pass
 
     def saveModel(self, model_name: str, iteration: int) -> None:
-        # nothing to do
-        pass
+        raise NotImplementedError
 
     def loadModel(self, file_name: str) -> None:
-        # nothing to do
-        pass
+        raise NotImplementedError
+
+    def import_checkpoint(self, checkpoint: dict) -> None:
+        raise NotImplementedError
+
+    def export_checkpoint(self) -> dict:
+        raise NotImplementedError

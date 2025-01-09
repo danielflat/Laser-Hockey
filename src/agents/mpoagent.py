@@ -482,3 +482,8 @@ class MPOAgent(Agent):
                     else param.data
                 )
 
+    def import_checkpoint(self, checkpoint: dict) -> None:
+        raise NotImplementedError
+
+    def export_checkpoint(self) -> dict:
+        raise NotImplementedError

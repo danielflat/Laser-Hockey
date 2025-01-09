@@ -29,7 +29,7 @@ SETTINGS = {
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
-        "SELF_PLAY": True,  # If the agent should play against itself like in AlphaGo
+        "SELF_PLAY": False,  # If the agent should play against itself like in AlphaGo
         "USE_ALGO": DDPG_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
         "BUFFER_SIZE": 1000000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),

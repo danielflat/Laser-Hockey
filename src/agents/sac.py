@@ -380,3 +380,9 @@ class SoftActorCritic(Agent):
         )
         self.alpha = self.log_alpha.exp().detach().item()
         print(f"Model loaded from {file_name}")
+
+    def import_checkpoint(self, checkpoint: dict) -> None:
+        raise NotImplementedError
+
+    def export_checkpoint(self) -> dict:
+        raise NotImplementedError

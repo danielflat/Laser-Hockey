@@ -279,3 +279,9 @@ class PPOAgent(Agent):
         """
         self.policy_net.load_state_dict(torch.load(file_name))
         logging.info(f"Q network weights loaded successfully!")
+
+    def import_checkpoint(self, checkpoint: dict) -> None:
+        raise NotImplementedError
+
+    def export_checkpoint(self) -> dict:
+        raise NotImplementedError

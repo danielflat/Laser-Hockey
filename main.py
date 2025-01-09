@@ -408,7 +408,7 @@ def main():
 
     opponent_pool = None
     # If we play Hockey, our training loop is different, because we use self play to train our agent
-    if SELF_PLAY:
+    if USE_ENV == HOCKEY:
         # Only in the Hockey env, we need some opponent_pool to play against
         random_agent = initAgent(use_algo = RANDOM_ALGO, env = env, device = DEVICE)
         weak_comp_agent = initAgent(use_algo = WEAK_COMP_ALGO, env = env, device = DEVICE)
@@ -426,23 +426,28 @@ def main():
         dqn_agent.setMode(eval = False)
         ppo_agent.setMode(eval = False)
         ddpg_agent.setMode(eval = True)  # TODO: Set the right agent to True
-        ddpg_agent.export_checkpoint(agent.import_checkpoint())
+        ddpg_agent.import_checkpoint(agent.export_checkpoint())
         td3_agent.setMode(eval = False)
         sac_agent.setMode(eval = False)
         mpo_agent.setMode(eval = False)
 
         # we use several opponents for our model such that we get a lot of different data for our model
-        opponent_pool = {
-            RANDOM_ALGO: random_agent,
-            WEAK_COMP_ALGO: weak_comp_agent,
-            STRONG_COMP_ALGO: strong_comp_agent,
-            DQN_ALGO: dqn_agent,
-            PPO_ALGO: ppo_agent,
-            DDPG_ALGO: ddpg_agent,
-            TD3_ALGO: td3_agent,
-            SAC_ALGO: sac_agent,
-            MPO_ALGO: mpo_agent,
-        }
+        if SELF_PLAY:
+            opponent_pool = {
+                ddpg_agent
+            }
+        else:
+            opponent_pool = {
+                RANDOM_ALGO: random_agent,
+                WEAK_COMP_ALGO: weak_comp_agent,
+                STRONG_COMP_ALGO: strong_comp_agent,
+                # DQN_ALGO: dqn_agent,
+                # PPO_ALGO: ppo_agent,
+                # DDPG_ALGO: ddpg_agent,
+                # TD3_ALGO: td3_agent,
+                # SAC_ALGO: sac_agent,
+                # MPO_ALGO: mpo_agent,
+            }
         do_multiple_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool)
 
     # If you use another env with a single player, train normally
@@ -453,13 +458,13 @@ def main():
     logging.info("Training is done! Now we will do some testing!")
     agent.setMode(eval = True)  # Set the agent in eval mode
 
-    if USE_ENV == HOCKEY:
-        test_durations, test_rewards = do_multiple_testing(env = env, agent = agent, opponent_pool = opponent_pool)
-    else:
-        test_durations, test_rewards = do_testing(env = env, agent = agent)
-    logging.info(f"Tests done! "
-                 f"Durations average: {np.array(test_durations).mean():.4f} | Durations std. dev: {np.array(test_durations).std():.4f} | Durations variance: {np.array(test_durations).var():.4f} | "
-                 f"Reward average: {np.array(test_rewards).mean():.4f} | Reward std. dev: {np.array(test_rewards).std():.4f} | Reward variance: {np.array(test_rewards).var():.4f}")
+    # if USE_ENV == HOCKEY:
+    #     test_durations, test_rewards = do_multiple_testing(env = env, agent = agent, opponent_pool = opponent_pool)
+    # else:
+    #     test_durations, test_rewards = do_testing(env = env, agent = agent)
+    # logging.info(f"Tests done! "
+    #              f"Durations average: {np.array(test_durations).mean():.4f} | Durations std. dev: {np.array(test_durations).std():.4f} | Durations variance: {np.array(test_durations).var():.4f} | "
+    #              f"Reward average: {np.array(test_rewards).mean():.4f} | Reward std. dev: {np.array(test_rewards).std():.4f} | Reward variance: {np.array(test_rewards).var():.4f}")
     logging.info(f"Finished! 🚀")
 
 
