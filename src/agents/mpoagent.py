@@ -129,12 +129,17 @@ class MPOAgent(Agent):
     
     Note: in the continuous case (not implemented yet), we get even more new hyperparameters as we need to fit a multivariate gaussian policy
     """
-    def __init__(self, agent_settings, device, state_dim, action_size, mpo_settings):
+
+    def __init__(self, agent_settings, device, state_space, action_space, mpo_settings):
         super().__init__(agent_settings, device)
-        #TODO: add support for continous action spaces
-        
-        self.device = device
-        self.ds = state_dim  # State space dimensions
+        # TODO: add support for continuous action spaces
+
+        self.state_shape = state_space
+        self.action_size = action_space
+        state_size = state_space.shape[0]
+        action_size = self.get_num_actions(action_space)
+
+        self.ds = state_size  # State space dimensions
         self.da = action_size # Nr of possible actions
         
         self.hidden_dim = mpo_settings.get("HIDDEN_DIM", 128) 
@@ -150,21 +155,27 @@ class MPOAgent(Agent):
         self.η_kl = 0.0
 
         #Set up the actor and critic networks
-        self.actor = Actor(state_dim, action_size, self.hidden_dim).to(device)
-        self.critic = Critic(state_dim, action_size, self.hidden_dim).to(device)
-        self.target_actor = Actor(state_dim, action_size, self.hidden_dim).to(device)
-        self.target_critic = Critic(state_dim, action_size, self.hidden_dim).to(device)
+        self.actor = Actor(state_size, action_size, self.hidden_dim).to(device)
+        self.critic = Critic(state_size, action_size, self.hidden_dim).to(device)
+        self.target_actor = Actor(state_size, action_size, self.hidden_dim).to(device)
+        self.target_critic = Critic(state_size, action_size, self.hidden_dim).to(device)
         self.target_actor.load_state_dict(self.actor.state_dict())
         self.target_critic.load_state_dict(self.critic.state_dict())
 
         #Set up the optimizers
-        actor_optim_cfg = agent_settings.get("OPTIMIZER", None)
-        critic_optim_cfg = agent_settings.get("OPTIMIZER", None)
+        actor_optim_cfg = mpo_settings.get("OPTIMIZER", None)
+        critic_optim_cfg = mpo_settings.get("OPTIMIZER", None)
         self.actor_optimizer = self.initOptim(actor_optim_cfg, self.actor.parameters())
         self.critic_optimizer = self.initOptim(critic_optim_cfg, self.critic.parameters())
         
         #Define the loss function for the crtic
         self.norm_loss_q = nn.SmoothL1Loss()
+
+    def __repr__(self):
+        """
+        For printing purposes only
+        """
+        return f"MPOAgent"
     
     def categorical_kl(self, p1, p2):
         """

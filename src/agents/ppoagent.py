@@ -13,20 +13,20 @@ from src.util.directoryutil import get_path
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, input_shape: int, action_shape: int):
+    def __init__(self, state_size: int, action_size: int):
         super().__init__()
         # It yields the prob. distribution of the action space given the state the given state
         self.actor = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_size, 64),
             nn.LeakyReLU(),
             nn.Linear(64, 64),
             nn.LeakyReLU(),
-            nn.Linear(64, action_shape),
+            nn.Linear(64, action_size),
             nn.Softmax(dim=-1))
 
         # It yields the state function for the given state
         self.critic = nn.Sequential(
-            nn.Linear(input_shape, 64),
+            nn.Linear(state_size, 64),
             nn.LeakyReLU(),
             nn.Linear(64, 64),
             nn.LeakyReLU(),
@@ -40,18 +40,20 @@ class ActorCritic(nn.Module):
 
 
 class PPOAgent(Agent):
-    def __init__(self, observation_size, action_size, agent_settings: dict, ppo_settings: dict, device: device):
+    def __init__(self, state_space, action_space, agent_settings: dict, ppo_settings: dict, device: device):
         super().__init__(agent_settings = agent_settings, device = device)
 
-        self.observation_size = observation_size
-        self.action_size = action_size
+        self.observation_size = state_space
+        self.action_size = action_space
+        state_size = state_space.shape[0]
+        action_size = self.get_num_actions(action_space)
 
         self.eps_clip = ppo_settings["EPS_CLIP"]
 
-        self.policy_net = ActorCritic(input_shape=observation_size, action_shape=action_size)
+        self.policy_net = ActorCritic(state_size = state_size, action_size = action_size)
         self.policy_net.to(device)
 
-        self.policy_old = ActorCritic(input_shape = observation_size, action_shape = action_size)
+        self.policy_old = ActorCritic(state_size = state_size, action_size = action_size)
         self.policy_old.to(device)
         self.policy_old.eval()  # set old policy net always to eval mode
         self.policy_old.load_state_dict(self.policy_net.state_dict())  # copy the network
@@ -61,9 +63,15 @@ class PPOAgent(Agent):
         self.criterion = self.initLossFunction(loss_name = ppo_settings["LOSS_FUNCTION"])
 
         # Activate torch.compile if wanted
-        if self.USE_COMPILE:
-            self.policy_net = torch.compile(self.policy_net)
-            self.policy_old = torch.compile(self.policy_old)
+        # if self.USE_COMPILE:
+        #     self.policy_net = torch.compile(self.policy_net)
+        #     self.policy_old = torch.compile(self.policy_old)
+
+    def __repr__(self):
+        """
+        For printing purposes only
+        """
+        return f"PPOAgent"
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         """

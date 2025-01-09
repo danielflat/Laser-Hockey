@@ -8,7 +8,6 @@ Author: Daniel
 """
 import logging
 import os
-from typing import Tuple
 
 import gymnasium
 import numpy as np
@@ -16,15 +15,22 @@ import torch
 from torch import device
 
 import hockey.hockey_env as h_env
+from src.agent import Agent
+from src.agents.compagent import CompAgent
 from src.agents.ddpgagent import DDPGAgent
 from src.agents.dqnagent import DQNAgent
 from src.agents.mpoagent import MPOAgent
 from src.agents.ppoagent import PPOAgent
+from src.agents.randomagent import RandomAgent
 from src.agents.sac import SoftActorCritic
 from src.agents.td3agent import TD3Agent
-from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, SAC_ALGO, SUPPORTED_ENVIRONMENTS, \
+from src.settings import AGENT_SETTINGS, DDPG_SETTINGS, DQN_SETTINGS, MPO_SETTINGS, PPO_SETTINGS, SAC_SETTINGS, \
+    TD3_SETTINGS
+from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, \
+    STRONG_COMP_ALGO, SUPPORTED_ALGORITHMS, \
+    SUPPORTED_ENVIRONMENTS, \
     SUPPORTED_RENDER_MODES, \
-    TD3_ALGO
+    TD3_ALGO, WEAK_COMP_ALGO
 from src.util.directoryutil import get_path
 from src.util.discreteactionmapper import DiscreteActionWrapper
 
@@ -57,51 +63,61 @@ def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int)
     return env
 
 
-def initAgent(use_algo: str, env,
-              agent_settings: dict, dqn_settings: dict, ppo_settings: dict,
-              ddpg_settings: dict, td3_settings: dict, sac_settings: dict, mpo_settings: dict, device: device):
+def initAgent(use_algo: str, env, device: device,
+              agent_settings: dict = AGENT_SETTINGS, dqn_settings: dict = DQN_SETTINGS,
+              ppo_settings: dict = PPO_SETTINGS,
+              ddpg_settings: dict = DDPG_SETTINGS, td3_settings: dict = TD3_SETTINGS, sac_settings: dict = SAC_SETTINGS,
+              mpo_settings: dict = MPO_SETTINGS) -> Agent:
     """
     Initialize the agent based on the config
     """
 
-    if use_algo == DQN_ALGO:
-        state_space_shape: Tuple[int, ...] = env.observation_space.shape
-        action_size: int = env.action_space.n
-        return DQNAgent(state_shape = state_space_shape, action_size = action_size, agent_settings = agent_settings,
-                        dqn_settings = dqn_settings, device = device)
-    elif use_algo == PPO_ALGO:
-        state_space_shape: Tuple[int, ...] = env.observation_space.shape
-        action_size: int = env.action_space.n
-        return PPOAgent(observation_size = state_space_shape[0], action_size = action_size,
-                        agent_settings = agent_settings, ppo_settings = ppo_settings, device = device)
-    elif use_algo == DDPG_ALGO:
-        return DDPGAgent(observation_space = env.observation_space, action_space = env.action_space,
-                         agent_settings = agent_settings, ddpg_settings = ddpg_settings, device = device)
-    elif use_algo == TD3_ALGO:
-        state_space_shape: Tuple[int, ...] = env.observation_space.shape
-        action_space: Tuple[int, ...] = env.action_space
-        return TD3Agent(observation_size = state_space_shape[0], action_space = action_space,
-                        agent_settings = agent_settings, td3_settings = td3_settings, device = device)
-    elif use_algo == SAC_ALGO:
-        state_space_shape: Tuple[int, ...] = env.observation_space.shape
-        action_space: Tuple[int, ...] = env.action_space
-        return SoftActorCritic(
-            state_dim = state_space_shape[0],
-            action_dim = action_space,
-            agent_settings = agent_settings,
-            device = device,
-            sac_settings = sac_settings
-        )
-    elif use_algo == MPO_ALGO:
-        state_space_shape: Tuple[int, ...] = env.observation_space.shape
-        action_space: Tuple[int, ...] = env.action_space
-        return MPOAgent(
-            state_dim = state_space_shape[0],
-            action_size = env.action_space.n,
-            agent_settings = agent_settings,
-            device = device,
-            mpo_settings = mpo_settings
-        )
+    state_space = env.observation_space
+    action_space = env.action_space
+
+    if use_algo in SUPPORTED_ALGORITHMS:
+        if use_algo == DQN_ALGO:
+            return DQNAgent(state_space = state_space, action_space = action_space, agent_settings = agent_settings,
+                            dqn_settings = dqn_settings, device = device)
+        elif use_algo == PPO_ALGO:
+            # state_space_shape: Tuple[int, ...] = env.observation_space.shape
+            # action_size: int = env.action_space.n
+            return PPOAgent(state_space = state_space, action_space = action_space,
+                            agent_settings = agent_settings, ppo_settings = ppo_settings, device = device)
+        elif use_algo == DDPG_ALGO:
+            return DDPGAgent(observation_space = env.observation_space, action_space = env.action_space,
+                             agent_settings = agent_settings, ddpg_settings = ddpg_settings, device = device)
+        elif use_algo == TD3_ALGO:
+            # state_space_shape: Tuple[int, ...] = env.observation_space.shape
+            # action_space: Tuple[int, ...] = env.action_space
+            return TD3Agent(state_space = state_space, action_space = action_space,
+                            agent_settings = agent_settings, td3_settings = td3_settings, device = device)
+        elif use_algo == SAC_ALGO:
+            # state_space_shape: Tuple[int, ...] = env.observation_space.shape
+            # action_space: Tuple[int, ...] = env.action_space
+            return SoftActorCritic(
+                state_space = state_space,
+                action_space = action_space,
+                agent_settings = agent_settings,
+                device = device,
+                sac_settings = sac_settings
+            )
+        elif use_algo == MPO_ALGO:
+            # state_space_shape: Tuple[int, ...] = env.observation_space.shape
+            # action_space: Tuple[int, ...] = env.action_space
+            return MPOAgent(
+                state_space = state_space,
+                action_space = action_space,
+                agent_settings = agent_settings,
+                device = device,
+                mpo_settings = mpo_settings
+            )
+        elif use_algo == RANDOM_ALGO:
+            return RandomAgent(env = env, agent_settings = agent_settings, device = device)
+        elif use_algo == WEAK_COMP_ALGO:
+            return CompAgent(is_Weak = True, agent_settings = agent_settings, device = device)
+        elif use_algo == STRONG_COMP_ALGO:
+            return CompAgent(is_Weak = False, agent_settings = agent_settings, device = device)
     else:
         raise Exception(f"The algorithm '{use_algo}' is not supported! Please choose another one!")
 

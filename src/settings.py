@@ -5,7 +5,8 @@ from time import localtime, strftime
 
 import torch
 
-from src.util.constants import ADAM, DDPG_ALGO, EXPONENTIAL, MSELOSS, PENDULUM, PINK_NOISE, SMOOTHL1
+from src.util.constants import ADAM, DDPG_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PINK_NOISE, \
+    SMOOTH_L1_LOSS
 
 _DEFAULT_OPTIMIZER = {
     "OPTIM_NAME": ADAM,  # Which optimizer to use
@@ -16,7 +17,7 @@ _DEFAULT_OPTIMIZER = {
     "USE_FUSION": torch.cuda.is_available()
     # if we have CUDA, we can use the fusion implementation of Adam -> Faster
 }
-_DEFAULT_LOSS_FUNCTION = SMOOTHL1
+_DEFAULT_LOSS_FUNCTION = SMOOTH_L1_LOSS
 
 SETTINGS = {
     # The settings for the main.py
@@ -24,11 +25,12 @@ SETTINGS = {
         "SEED": 24,  # The seed that we want to use
         "DEVICE": torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # On which machine is it running?
         "USE_TF32": True,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
-        "USE_ENV": PENDULUM,  # The used environment
-        "RENDER_MODE": None,  # The render mode. Supported: None or HUMAN
+        "USE_ENV": HOCKEY,  # The used environment
+        "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
-        "USE_ALGO": DDPG_ALGO,  # The used algorithm. Either DQN_ALGO or PPO_ALGO
+        "SELF_PLAY": True,  # If the agent should play against itself like in AlphaGo
+        "USE_ALGO": DDPG_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
         "BUFFER_SIZE": 1000000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
@@ -44,7 +46,6 @@ SETTINGS = {
     "AGENT": {
         # GENERAL SETTINGS
         "USE_BF16": False,  # Uses BF16 in forward pass or not. Makes it faster, but you have lower precision
-        "SELF_TRAINING": False,  # If the agent should play against itself like in AlphaGo
         "USE_COMPILE": False,  # if torch.compile should be used for the networks
         "OPT_ITER": 32,  # How many iterations should be done of gradient descent when calling agent.optimize()?
         "BATCH_SIZE": 128,  # The batch size for doing gradient descent
@@ -74,12 +75,12 @@ SETTINGS = {
     # The specific settings for the DQN agent
     "DQN": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
-        "LOSS_FUNCTION": SMOOTHL1,
+        "LOSS_FUNCTION": SMOOTH_L1_LOSS,
     },
     # The specific settings for the PPO agent
     "PPO": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
-        "LOSS_FUNCTION": MSELOSS,
+        "LOSS_FUNCTION": MSE_LOSS,
         "EPS_CLIP": 0.2,  # the clipping hyperparam for the ppo algo
     },
     # The specific settings for the DDPG agent
@@ -107,7 +108,7 @@ SETTINGS = {
                 "USE_FUSION": torch.cuda.is_available()
                 # if we have CUDA, we can use the fusion implementation of Adam -> Faster
             },
-            "LOSS_FUNCTION": SMOOTHL1,
+            "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
         "NOISE": {
             "NOISE_TYPE": PINK_NOISE,
@@ -126,16 +127,22 @@ SETTINGS = {
     },
     # The specific settings for the TD3 agent
     "TD3": {
+        "OPTIMIZER": _DEFAULT_OPTIMIZER,
+        "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
         "POLICY_DELAY": 2,  # The delay of the policy optimization
         "NOISE_CLIP": 1,  # The gaussian noise clip value
     },
     "SAC": {
+        "OPTIMIZER": _DEFAULT_OPTIMIZER,
+        "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
         "LEARN_ALPHA": True,  # Whether to learn the temperature alpha
         "TARGET_ENTROPY": None,  # Target entropy for automatic alpha
         "INIT_ALPHA": 0.2,
         "HIDDEN_DIM": 256
     },
     "MPO": {
+        "OPTIMIZER": _DEFAULT_OPTIMIZER,
+        "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
         "HIDDEN_DIM": 64,
         "SAMPLE_ACTION_NUM": 10,
         "DUAL_CONSTAINT": 0.1,

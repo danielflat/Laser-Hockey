@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import numpy as np
 import torch
 from torch import device
@@ -5,7 +7,7 @@ from torch import device
 from src.util.constants import OU_NOISE, PINK_NOISE, SUPPORTED_NOISE_TYPES, WHITE_NOISE
 
 
-def initNoise(action_shape, noise_settings: dict, device: device):
+def initNoise(action_shape: Tuple[int], noise_settings: dict, device: device):
     noise_type = noise_settings["NOISE_TYPE"]
     noise_params = noise_settings["NOISE_PARAMS"]
 
@@ -61,7 +63,7 @@ class PinkNoise:
         self.device = device
 
         # Is used to create the pink noise
-        self.prev_values = np.zeros(16)
+        self.prev_values = np.zeros((16,) + self.shape)
 
     def sample(self) -> np.ndarray:
         """
@@ -75,5 +77,5 @@ class PinkNoise:
         self.prev_values[1:] = self.prev_values[:-1]
         self.prev_values[0] = white_sample
 
-        pink_sample = (self.prev_values / (1 + np.arange(16))).sum()
+        pink_sample = (self.prev_values / np.expand_dims(1 + np.arange(16), axis = -1)).sum(axis = 0)
         return pink_sample / 4  # Normalization factor

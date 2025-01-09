@@ -160,9 +160,9 @@ class DDPGAgent(object):
         #                                  activation_fun = torch.nn.ReLU(),
         #                                  output_activation = torch.nn.Tanh())
 
-        self.origin_net = ActorCritic(observation_size = self._obs_dim, action_size = self._action_n,
+        self.origin_net = ActorCritic(state_size = self._obs_dim, action_size = self._action_n,
                                       use_compile = False, device = device)
-        self.target_net = ActorCritic(observation_size = self._obs_dim, action_size = self._action_n,
+        self.target_net = ActorCritic(state_size = self._obs_dim, action_size = self._action_n,
                                       use_compile = False, device = device)
         self.target_net.eval()  # Set it always to Eval mode
         self.updateTargetNet(source = self.origin_net.actor, target = self.target_net.actor)  # Copy the Q network

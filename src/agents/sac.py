@@ -8,7 +8,7 @@ from torch import nn
 
 from src.agent import Agent  # Adjust import to match your project structure
 from src.replaymemory import ReplayMemory
-from src.util.constants import MSELOSS
+from src.util.constants import MSE_LOSS
 from src.util.directoryutil import get_path
 
 
@@ -26,7 +26,8 @@ class Actor(nn.Module):
       - The range can be symmetric or asymmetric, but we do the basic linear rescaling 
         from [-1,1] to [low, high].
     """
-    def __init__(self, state_dim: int, action_dim, hidden_dim: int = 256, device: torch.device = None):
+
+    def __init__(self, state_size, action_space, action_size: int, hidden_dim: int = 256, device: torch.device = None):
         super().__init__()
         self.device = device if device else torch.device("cpu")
         
@@ -34,25 +35,22 @@ class Actor(nn.Module):
         # e.g. if action_dim = Box(-2, 2, (1,), float32)
         # then action_dim.low might be array([-2.]), action_dim.high might be array([ 2.])
         # shape = (1, )
-        self.action_low = torch.tensor(action_dim.low, dtype=torch.float32, device=self.device)
-        self.action_high = torch.tensor(action_dim.high, dtype=torch.float32, device=self.device)
+        self.action_low = torch.tensor(action_space.low, dtype = torch.float32, device = self.device)
+        self.action_high = torch.tensor(action_space.high, dtype = torch.float32, device = self.device)
         # Scale & bias for linear mapping from [-1,1] to [low, high]
-        self.action_scale = (self.action_high - self.action_low) / 2.0
-        self.action_bias = (self.action_high + self.action_low) / 2.0
-        
-        # Number of action dimensions
-        act_size = int(np.prod(action_dim.shape))  # e.g. 1 if shape=(1,)
-        
+        self.action_scale = ((self.action_high - self.action_low) / 2.0)[:action_size]
+        self.action_bias = ((self.action_high + self.action_low) / 2.0)[:action_size]
+
         # Simple feedforward network
         self.net = nn.Sequential(
-            nn.Linear(state_dim, hidden_dim),
+            nn.Linear(state_size, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
         )
         # Output heads for mean and log_std
-        self.mean_head = nn.Linear(hidden_dim, act_size)
-        self.log_std_head = nn.Linear(hidden_dim, act_size)
+        self.mean_head = nn.Linear(hidden_dim, action_size)
+        self.log_std_head = nn.Linear(hidden_dim, action_size)
         
     def forward(self, x: torch.Tensor) -> (torch.Tensor, torch.Tensor):
         """
@@ -123,14 +121,15 @@ class Critic(nn.Module):
     Critic network (Q function) for SAC.
     Maps (state, action) -> Q-value.
     """
-    def __init__(self, state_dim: int, action_dim: int, hidden_dim: int):
+
+    def __init__(self, state_size: int, action_size: int, hidden_size: int):
         super(Critic, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(state_dim + action_dim.shape[0], hidden_dim),
+            nn.Linear(state_size + action_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_dim, 1)
+            nn.Linear(hidden_size, 1)
         )
 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
@@ -149,8 +148,8 @@ class SoftActorCritic(Agent):
         self,
         agent_settings: dict,
         device: torch.device,
-        state_dim: int,
-        action_dim: int,
+            state_space,
+            action_space,
         sac_settings: dict
     ):
         """
@@ -165,14 +164,18 @@ class SoftActorCritic(Agent):
 
         super().__init__(agent_settings, device)
 
+        # Number of dimensions
+        state_size = state_space.shape[0]
+        action_size = self.get_num_actions(action_space)
+
         # Set up networks
-        self.actor = Actor(state_dim, action_dim, hidden_dim).to(device)
-        self.critic1 = Critic(state_dim, action_dim, hidden_dim).to(device)
-        self.critic2 = Critic(state_dim, action_dim, hidden_dim).to(device)
+        self.actor = Actor(state_size, action_space, action_size, hidden_dim).to(device)
+        self.critic1 = Critic(state_size, action_size, hidden_dim).to(device)
+        self.critic2 = Critic(state_size, action_size, hidden_dim).to(device)
 
         # Target critics for stable Q-target estimation
-        self.critic1_target = Critic(state_dim, action_dim, hidden_dim).to(device)
-        self.critic2_target = Critic(state_dim, action_dim, hidden_dim).to(device)
+        self.critic1_target = Critic(state_size, action_size, hidden_dim).to(device)
+        self.critic2_target = Critic(state_size, action_size, hidden_dim).to(device)
         self.critic1_target.load_state_dict(self.critic1.state_dict())
         self.critic2_target.load_state_dict(self.critic2.state_dict())
 
@@ -180,14 +183,14 @@ class SoftActorCritic(Agent):
         self.learn_alpha = learn_alpha
         self.log_alpha = torch.tensor(np.log(init_alpha), dtype=torch.float32, requires_grad=True, device=device)
         self.alpha = self.log_alpha.exp().detach().item()  # for logging
-        self.target_entropy = target_entropy if target_entropy is not None else -action_dim.shape[0]
+        self.target_entropy = target_entropy if target_entropy is not None else -action_space.shape[0]
 
         # Optimization hyperparameters
         # Example: we can keep separate configs for actor, critic, and alpha
         # or you can use your single config with "initOptim()" from the base.
-        actor_optim_cfg = agent_settings.get("OPTIMIZER", None)
-        critic_optim_cfg = agent_settings.get("OPTIMIZER", None)
-        alpha_optim_cfg = agent_settings.get("OPTIMIZER", None)
+        actor_optim_cfg = sac_settings["OPTIMIZER"]
+        critic_optim_cfg = sac_settings["OPTIMIZER"]
+        alpha_optim_cfg = sac_settings["OPTIMIZER"]
 
         # Initialize optimizers
         self.actor_optimizer = self.initOptim(actor_optim_cfg, self.actor.parameters())
@@ -198,9 +201,15 @@ class SoftActorCritic(Agent):
 
         # Define a loss function (MSE for Q-updates)
         # You can also choose SmoothL1 if you prefer.
-        self.critic_loss_fn = self.initLossFunction(agent_settings.get("CRITIC_LOSS", MSELOSS))
+        self.critic_loss_fn = self.initLossFunction(agent_settings.get("CRITIC_LOSS", MSE_LOSS))
 
-    def act(self, x: torch.Tensor) -> int:
+    def __repr__(self):
+        """
+        For printing purposes only
+        """
+        return f"SACAgent"
+
+    def act(self, x: torch.Tensor) -> np.ndarray:
         """
         Returns an *action index* or an *action vector* depending on your environment.
         For continuous action environments, we'll just return a float vector in [-1, 1].
@@ -233,7 +242,7 @@ class SoftActorCritic(Agent):
         losses = []
         for _ in range(self.opt_iter):
             # 1. Sample from replay
-            states, actions, rewards, next_states, dones, _ = memory.sample(self.batch_size, self.device)
+            states, actions, rewards, next_states, dones, _ = memory.sample(self.batch_size)
 
             # 2. Compute next actions and next log probs using the current actor
             with torch.no_grad():

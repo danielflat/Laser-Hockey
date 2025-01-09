@@ -8,12 +8,13 @@ from torch import Tensor
 
 
 class ReplayMemory:
-    def __init__(self, capacity) -> None:
+    def __init__(self, capacity, device: torch.device) -> None:
         """
         Initialize the replay memory with a given capacity.
         :param capacity: Maximum number of transitions to store.
         """
         self.storage = deque([], maxlen=capacity)
+        self.device = device
 
     def push(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor,
              next_state: torch.Tensor, done: Tensor, info: dict) -> None:
@@ -41,11 +42,11 @@ class ReplayMemory:
         states, actions, rewards, next_states, dones, infos = zip(*batch)
 
         # Convert them to the right shapes
-        states = torch.vstack(states)
-        actions = torch.vstack(actions)
-        rewards = torch.vstack(rewards)
-        next_states = torch.vstack(next_states)
-        dones = torch.vstack(dones)
+        states = torch.vstack(states).to(self.device)
+        actions = torch.vstack(actions).to(self.device)
+        rewards = torch.vstack(rewards).to(self.device)
+        next_states = torch.vstack(next_states).to(self.device)
+        dones = torch.vstack(dones).to(self.device)
         infos = list(infos)
 
         return states, actions, rewards, next_states, dones, infos

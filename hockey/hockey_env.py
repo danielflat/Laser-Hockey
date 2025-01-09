@@ -1,15 +1,14 @@
 import math
-import numpy as np
+from enum import Enum
 
 import Box2D
-# noinspection PyUnresolvedReferences
-from Box2D.b2 import (edgeShape, circleShape, fixtureDef, polygonShape, revoluteJointDef, contactListener)
-
 import gymnasium as gym
+import numpy as np
+# noinspection PyUnresolvedReferences
+from Box2D.b2 import (circleShape, contactListener, edgeShape, fixtureDef, polygonShape, revoluteJointDef)
 from gymnasium import spaces
 from gymnasium.error import DependencyNotInstalled
-from gymnasium.utils import seeding, EzPickle
-from enum import Enum
+from gymnasium.utils import EzPickle, seeding
 
 # import pyglet
 # from pyglet import gl
@@ -693,9 +692,9 @@ class HockeyEnv(gym.Env, EzPickle):
 
   def render(self, mode='human'):
     if mode is None:
-      gym.logger.warn(
-        "the render method needs a rendering mode"
-      )
+      # gym.logger.warn(
+      #   "the render method needs a rendering mode"
+      # )
       return
     try:
       import pygame
