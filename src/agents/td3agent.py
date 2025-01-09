@@ -56,15 +56,6 @@ class Actor(nn.Module):
         """
         action = self.network(state)
         return action
-    
-    def predict(self, x: torch.Tensor) -> np.ndarray:
-        """
-        Calculates the detached Actor Value as a numpy array 
-        """
-        with torch.no_grad():
-            action = self.forward(x).squeeze().cpu().numpy()
-            action = np.expand_dims(action, axis=0)
-            return action
 
 
 class TD3Agent(Agent):
@@ -135,26 +126,32 @@ class TD3Agent(Agent):
         """
         if self.isEval:
             self.epsilon = 0
-            
+        
+        state = state.float()
         with torch.no_grad():
-            #action squeezed in -1 to 1 via tanh (+ noise)
-            action_deterministic = self.Actor.forward(state)
-            action = action_deterministic + torch.randn_like(action_deterministic, device=self.device) * self.epsilon
-            #rescale the action to the action space
-            action = action * self.action_scale + self.action_bias
-            action = torch.clamp(action, self.action_low, self.action_high)
+            #Exploration noise
+            noise = torch.clamp(
+                torch.randn(self.action_space.shape[0], device=self.device) * self.epsilon,
+                min=-self.noise_clip,
+                max=self.noise_clip)
+            
+            #Forward pass for the Actor network and rescaling
+            det_action = self.Actor.forward(state) * self.action_scale + self.action_bias
+            action = torch.clamp(
+                det_action + noise, 
+                min=self.action_low, #Minimum action value
+                max=self.action_high) #Maximum action value
             
         action = action.squeeze().cpu().numpy()
-
-        action = np.expand_dims(action, axis=0)
         return action
 
-    def calc_td_target(self, reward: torch.Tensor, done: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
+    def critic_forward(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, done: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
         """
-        Calculates the TD Target
+        Calculates the TD Target and the loss for the Q networks
         1. Sample the next action from the target Actor network using gaussian exploration noise
         2. Calculate the Q values for the next state and next action using both target Q networks
         3. Calculate the TD Target by bootstrapping the minimum of the two Q networks
+        4. Calculate the loss for both Q networks using the TD Target
         """
         with torch.no_grad():
             #Exploration noise
@@ -190,7 +187,12 @@ class TD3Agent(Agent):
             #3. Bootstrapping the minimum of the two Q networks
             td_target = reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2)
             
-        return td_target
+        #4. Logging the Q values for the next state and next action
+        Critic1_loss = self.criterion(self.Critic1.forward(state, action), td_target)
+        Critic2_loss = self.criterion(self.Critic2.forward(state, action), td_target)
+        Critic_loss = Critic1_loss + Critic2_loss
+            
+        return Critic_loss
         
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
@@ -204,12 +206,16 @@ class TD3Agent(Agent):
         for i in range(1, self.opt_iter + 1):
             #Sample from the replay memory
             state, action, reward, next_state, done, info = memory.sample(self.batch_size, randomly=True)
-
+            state = state.float()
+            action = action.float()
+            reward = reward.float()
+            next_state = next_state.float()
             #Forward pass for Q networks
-            td_target = self.calc_td_target(reward, done, next_state)
-            Critic1_loss = self.criterion(self.Critic1.forward(state, action), td_target)
-            Critic2_loss = self.criterion(self.Critic2.forward(state, action), td_target)
-            Critic_loss = Critic1_loss + Critic2_loss
+            if self.USE_BF_16:
+                with torch.autocast(device_type = self.device.type, dtype = torch.bfloat16):
+                        Critic_loss = self.critic_forward(state, action, reward, done, next_state)
+            else:
+                Critic_loss = self.critic_forward(state, action, reward, done, next_state)
             
             #Backward step for Q networks
             self.optimizer_critic.zero_grad()
@@ -219,8 +225,13 @@ class TD3Agent(Agent):
             self.optimizer_critic.step()
             
             #Get the target for Policy network
-            q_1 = self.Critic1.forward(state, self.Actor.forward(state))
-            policy_loss = -torch.mean(q_1)
+            if self.USE_BF_16:
+                with torch.autocast(device_type = self.device.type, dtype = torch.bfloat16):
+                    q_1 = self.Critic1.forward(state, self.Actor.forward(state))
+                    policy_loss = -torch.mean(q_1)
+            else:
+                q_1 = self.Critic1.forward(state, self.Actor.forward(state))
+                policy_loss = -torch.mean(q_1)
             
             #Backward step for Policy network
             if i % self.policy_delay == 0:
