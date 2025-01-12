@@ -5,7 +5,7 @@ from time import localtime, strftime
 
 import torch
 
-from src.util.constants import ADAM, DDPG_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
+from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
 
 _DEFAULT_OPTIMIZER = {
@@ -44,7 +44,7 @@ SETTINGS = {
         # If None, you use a continuous action space, else you use a discrete action set
         "SELF_PLAY": False,  # If the agent should play against itself like in AlphaGo
         "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
-        "BUFFER_SIZE": 1000000,  # How many items can be stored in the replay buffer?
+        "BUFFER_SIZE": 1_000_000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
         "NUM_TRAINING_EPISODES": 100,  # How many training episodes should be run?
@@ -60,7 +60,7 @@ SETTINGS = {
         # GENERAL SETTINGS
         "USE_BF16": False,  # Uses BF16 in forward pass or not. Makes it faster, but you have lower precision
         "USE_COMPILE": False,  # if torch.compile should be used for the networks
-        "OPT_ITER": 32,  # How many iterations should be done of gradient descent when calling agent.optimize()?
+        "OPT_ITER": 128,  # How many iterations should be done of gradient descent when calling agent.optimize()?
         "BATCH_SIZE": 200,  # The batch size for doing gradient descent
         "DISCOUNT": 0.95,  # The discount factor for the TD error
 
@@ -82,6 +82,8 @@ SETTINGS = {
         # BACKWARD STEP STRATEGY
         "USE_GRADIENT_CLIPPING": False,  # If the gradients should be clipped
         "GRADIENT_CLIPPING_VALUE": 1.0,  # The gradient clipping value
+        "USE_NORM_CLIPPING": True,  # If the norm of the gradients should be clipped
+        "NORM_CLIPPING_VALUE": 20.0,  # The gradient clipping value
         "USE_CLIP_FOREACH": torch.cuda.is_available(),
         # USE the foreach implementation of gradient clipping. Only relevant if 'USE_GRADIENT_CLIPPING' is True
     },
@@ -195,6 +197,7 @@ SETTINGS = {
     "TD_MPC2": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
         "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
+        "NOISE": _DEFAULT_NOISE,
         "HORIZON": 3,
         "MMPI_ITERATIONS": 6,
         "NUM_TRAJECTORIES": 8,

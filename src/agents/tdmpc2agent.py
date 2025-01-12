@@ -10,6 +10,7 @@ from torch import nn
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util import mathutil
+from src.util.noiseutil import initNoise
 
 """
 Our implementation of TD-MPC2
@@ -20,6 +21,10 @@ Author: Daniel Flat
 """
 
 
+def _log_std_clamp(log_std, min_value = -10, max_value = 2):
+    """Clamp log_std to a specific range."""
+    return torch.clamp(log_std, min_value, max_value)
+
 # TODO
 class EncoderNet(nn.Module):
     def __init__(self, state_size: int, latent_size: int):
@@ -28,7 +33,8 @@ class EncoderNet(nn.Module):
         self.encoder_net = nn.Sequential(
             nn.Linear(state_size, 256),
             nn.ReLU(),
-            nn.Linear(256, latent_size),  # add SimNorm
+            nn.Linear(256, latent_size),
+            nn.LayerNorm(latent_size)  # SimNorm equivalent TODO
         )
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
@@ -49,9 +55,10 @@ class DynamicsNet(nn.Module):
             nn.Linear(latent_size, latent_size),
         )
 
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
-        latent_state = self.encoder_net(state)
-        return latent_state
+    def forward(self, latent_state: torch.Tensor, latent_action: torch.Tensor) -> torch.Tensor:
+        input = torch.cat([latent_state, latent_action], dim = -1)
+        next_latent_state = self.encoder_net(input)
+        return next_latent_state
 
 
 # TODO
@@ -67,8 +74,9 @@ class RewardNet(nn.Module):
             nn.Linear(latent_size, 1),
         )
 
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
-        latent_state = self.encoder_net(state)
+    def forward(self, latent_state: torch.Tensor, latent_action: torch.Tensor) -> torch.Tensor:
+        input = torch.cat([latent_state, latent_action], dim = -1)
+        latent_state = self.encoder_net(input)
         return latent_state
 
 
@@ -85,9 +93,11 @@ class ActorNet(nn.Module):
             nn.Linear(128, 2 * action_size),  # mean, std
             nn.Tanh())
 
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
-        action = self.actor_net(state)
-        return action
+    def forward(self, latent_state: torch.Tensor) -> torch.Tensor:
+        output = self.actor_net(latent_state)
+        mean, log_std = output.chunk(2, dim = -1)
+        log_std = _log_std_clamp(log_std)
+        return mean, log_std
 
 
 # TODO
@@ -102,8 +112,8 @@ class CriticNet(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(128, 1))
 
-    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        input = torch.hstack([state, action])
+    def forward(self, latent_state: torch.Tensor, latent_action: torch.Tensor) -> torch.Tensor:
+        input = torch.cat([latent_state, latent_action], dim = -1)
         q_value = self.critic_net(input)
         return q_value
 
@@ -134,9 +144,9 @@ class TDMPC2Agent(Agent, nn.Module):
         self.min_action = action_space.low[:self.action_size]
         self.max_action = action_space.high[:self.action_size]
 
-        # self.noise = initNoise(action_shape = (self.action_size,), noise_settings = td_mpc2_settings["NOISE"],
-        #                        device = self.device)
-        # self.noise_factor = td_mpc2_settings["NOISE"]["NOISE_FACTOR"]
+        self.noise = initNoise(action_shape = (self.action_size,), noise_settings = td_mpc2_settings["NOISE"],
+                               device = self.device)
+        self.noise_factor = td_mpc2_settings["NOISE"]["NOISE_FACTOR"]
 
         self.horizon = td_mpc2_settings["HORIZON"]
         self.mmpi_iterations = td_mpc2_settings["MMPI_ITERATIONS"]
@@ -218,10 +228,10 @@ class TDMPC2Agent(Agent, nn.Module):
     def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         losses = []
 
-        for i in range(1, self.opt_iter + 1):
-            # Step 01: We take the whole sequence from the batch
-            state, action, reward, next_state, done, _ = memory.sample(batch_size = self.batch_size, randomly = False)
+        # Step 01: We take the whole sequence from the batch
+        state, action, reward, next_state, done, _ = memory.sample(batch_size = self.batch_size, randomly = False)
 
+        for i in range(1, self.opt_iter + 1):
             # Step 02: We randomly subsample a horizon-long trajectory for updating
             starting_point = torch.randint(0, state.shape[0] - self.horizon, (1,), device = self.device)
             state = state[starting_point:starting_point + self.horizon + 1]
@@ -230,22 +240,18 @@ class TDMPC2Agent(Agent, nn.Module):
             next_state = next_state[starting_point:starting_point + self.horizon + 1]
             done = done[starting_point:starting_point + self.horizon + 1]
 
-            # if starting_point > 195:
-            #     print(starting_point)
-
             # Step 03: Update the agent.
             loss = self._update(state, action, reward, next_state, done)
 
             # Step 04: Keep track of the loss
             losses.append(loss)
 
-        # Step 05: After some time, update the agent
-        # NOTE: HERE, we the update frequency is w.t.r. the total number of episodes
-        if episode_i % self.target_net_update_freq == 0:
-            self.updateTargetNet(soft_update = False, source = self.q1_net,
-                                 target = self.q1_target_net)
-            self.updateTargetNet(soft_update = False, source = self.q2_net,
-                                 target = self.q2_target_net)
+            # Step 05: After some time, update the agent
+            if episode_i % self.target_net_update_freq == 0:
+                self.updateTargetNet(soft_update = self.use_soft_updates, source = self.q1_net,
+                                     target = self.q1_target_net)
+                self.updateTargetNet(soft_update = self.use_soft_updates, source = self.q2_net,
+                                     target = self.q2_target_net)
 
         # at the end, we have to clear the memory again
         memory.clear()
@@ -317,8 +323,8 @@ class TDMPC2Agent(Agent, nn.Module):
         # Step 01: Let's first predict the state and the discounted reward in the num of `horizon` in the future.
         _G, _discount = 0, 1
         for t in range(self.horizon):
-            reward = self._predict_reward(latent_state, action_sequence[t])
-            latent_state = self._predict_next_state(latent_state, action_sequence[t])
+            reward = self.reward_net(latent_state, action_sequence[t])
+            latent_state = self.dynamics_net(latent_state, action_sequence[t])
             _G += _discount * reward
             _discount *= self.discount
 
@@ -481,7 +487,7 @@ class TDMPC2Agent(Agent, nn.Module):
 
         # Step 04: Make predictions for Q-values and rewards based on the latent states and actions
         predicted_q_values = self._min_q_value(latent_state_rollout, action, use_target = False)
-        predicted_rewards = self._predict_reward(latent_state_rollout, action)
+        predicted_rewards = self.reward_net(latent_state_rollout, action)
 
         # Step 05: Compute losses for rewards and Q-values
         reward_loss, value_loss = 0, 0
@@ -511,15 +517,18 @@ class TDMPC2Agent(Agent, nn.Module):
         # Update model
         self.optim.zero_grad()
         total_loss.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), self.grad_clip_norm)
+        if self.use_norm_clipping:
+            total_grad_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), self.grad_clip_norm,
+                                                             foreach = self.use_clip_foreach)
         self.optim.step()
-        # self.optim.zero_grad(set_to_none = True)
 
         # Update policy
         self.policy_optim.zero_grad()
         policy_loss = self._calculate_policy_loss(latent_state_rollout.detach())
         policy_loss.backward()
-        policy_grad_norm = torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.grad_clip_norm)
+        if self.use_norm_clipping:
+            policy_grad_norm = torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.grad_clip_norm,
+                                                              foreach = self.use_clip_foreach)
         self.policy_optim.step()
 
         return total_loss.item()
@@ -588,65 +597,3 @@ class TDMPC2Agent(Agent, nn.Module):
         }
         return action, info
 
-        # mean = output[..., :self.action_size]
-        # self.policy(latent_state)
-
-        # log_std = math.log_std(log_std, self.log_std_min, self.log_std_dif)
-        # eps = torch.randn_like(mean)
-        #
-        # if self.cfg.multitask:  # Mask out unused action dimensions
-        #     mean = mean * self._action_masks[task]
-        #     log_std = log_std * self._action_masks[task]
-        #     eps = eps * self._action_masks[task]
-        #     action_dims = self._action_masks.sum(-1)[task].unsqueeze(-1)
-        # else:  # No masking
-        #     action_dims = None
-        #
-        # log_prob = math.gaussian_logprob(eps, log_std)
-        #
-        # # Scale log probability by action dimensions
-        # size = eps.shape[-1] if action_dims is None else action_dims
-        # scaled_log_prob = log_prob * size
-        #
-        # # Reparameterization trick
-        # action = mean + eps * log_std.exp()
-        # mean, action, log_prob = math.squash(mean, action, log_prob)
-        #
-        # entropy_scale = scaled_log_prob / (log_prob + 1e-8)
-        # info = TensorDict({
-        #     "mean": mean,
-        #     "log_std": log_std,
-        #     "action_prob": 1.,
-        #     "entropy": -log_prob,
-        #     "scaled_entropy": -log_prob * entropy_scale,
-        # })
-        # return action, info
-    #
-    # # TODO
-    # def Q(self, z, a, task, return_type = 'min', target = False, detach = False):
-    #     """
-    #     Predict state-action value.
-    #     `return_type` can be one of [`min`, `avg`, `all`]:
-    #         - `min`: return the minimum of two randomly subsampled Q-values.
-    #         - `avg`: return the average of two randomly subsampled Q-values.
-    #         - `all`: return all Q-values.
-    #     `target` specifies whether to use the target Q-networks or not.
-    #     """
-    #
-    #     z = torch.cat([z, a], dim = -1)
-    #     if target:
-    #         qnet = self._target_Qs
-    #     elif detach:
-    #         qnet = self._detach_Qs
-    #     else:
-    #         qnet = self._Qs
-    #     out = qnet(z)
-    #
-    #     if return_type == 'all':
-    #         return out
-    #
-    #     qidx = torch.randperm(self.cfg.num_q, device = out.device)[:2]
-    #     Q = math.two_hot_inv(out[qidx], self.cfg)
-    #     if return_type == "min":
-    #         return Q.min(0).values
-    #     return Q.sum(0) / 2
