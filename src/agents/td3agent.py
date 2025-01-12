@@ -1,5 +1,5 @@
 import os
-from typing import List
+import logging 
 
 import numpy as np
 import torch
@@ -8,18 +8,29 @@ from torch import device, nn
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util.directoryutil import get_path
+from src.util.noiseutil import initNoise
+"""
+Author: Andre Pfrommer
 
+TODOS:
+- ADD OU NOISE/WHITE NOISE/PINK NOISE
+- ADD BATCH NORMALIZATION
+"""
+    
+####################################################################################################
+# Critic and Actor Networks
+####################################################################################################
 
 class Critic(nn.Module):
-    def __init__(self, state_size: int, hidden_sizes: List[int], action_size: int):
+    def __init__(self, state_size: int, hidden_sizes: list[int], action_size: int):
         super().__init__()
 
         self.network = nn.Sequential(
-            nn.Linear(state_size + action_size, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 1)
+            nn.Linear(state_size + action_size, hidden_sizes[0]),
+            nn.ReLU(),
+            nn.Linear(hidden_sizes[0], hidden_sizes[1]),
+            nn.ReLU(),
+            nn.Linear(hidden_sizes[1], 1)
         )
 
         self.loss = torch.nn.SmoothL1Loss()
@@ -33,15 +44,15 @@ class Critic(nn.Module):
         return self.network(concat_input)
 
 class Actor(nn.Module):
-    def __init__(self, state_size: int, hidden_sizes: List[int], action_size: int):
+    def __init__(self, state_size: int, hidden_sizes: list[int], action_size: int):
         super().__init__()
 
         self.network = nn.Sequential(
-            nn.Linear(state_size, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, action_size),
+            nn.Linear(state_size, hidden_sizes[0]),
+            nn.ReLU(),
+            nn.Linear(hidden_sizes[0], hidden_sizes[1]),
+            nn.ReLU(),
+            nn.Linear(hidden_sizes[1], action_size),
             nn.Tanh()
         )
 
@@ -52,15 +63,9 @@ class Actor(nn.Module):
         action = self.network(state)
         return action
 
-    def predict(self, x: torch.Tensor) -> np.ndarray:
-        """
-        Calculates the detached Actor Value as a numpy array 
-        """
-        with torch.no_grad():
-            action = self.forward(x).squeeze().cpu().numpy()
-            action = np.expand_dims(action, axis = 0)
-            return action
-
+####################################################################################################
+# TD3 Agent
+####################################################################################################
 
 class TD3Agent(Agent):
     def __init__(self, state_space, action_space, agent_settings: dict, td3_settings: dict, device: device):
@@ -79,7 +84,6 @@ class TD3Agent(Agent):
 
         self.policy_delay = td3_settings["POLICY_DELAY"]
         self.noise_clip = td3_settings["NOISE_CLIP"]
-        self.noise = td3_settings["NOISE"]
 
         # Here we have 2 Q Networks
         self.Critic1 = Critic(state_size=state_size,
@@ -89,37 +93,34 @@ class TD3Agent(Agent):
                             hidden_sizes=[128, 128],
                             action_size=action_size).to(device)
         self.Actor = Actor(state_size=state_size,
-                                    hidden_sizes=[128, 128, 64],
-                                    action_size=action_size).to(device)
-        self.Critic1_target = Critic(state_size=state_size,
                                     hidden_sizes=[128, 128],
                                     action_size=action_size).to(device)
-        self.Critic2_target = Critic(state_size=state_size,
-                                    hidden_sizes=[128, 128],
-                                    action_size=action_size).to(device)
-        self.Actor_target = Actor(state_size=state_size,
-                                            hidden_sizes=[128, 128, 64],
-                                            action_size=action_size).to(device)
-        # Set the target nets in eval
-        self.Critic1_target.eval()
-        self.Critic2_target.eval()
-        self.Actor_target.eval()
+        if self.use_target_net:
+            self.Critic1_target = Critic(state_size=state_size,
+                                        hidden_sizes=[128, 128],
+                                        action_size=action_size).to(device)
+            self.Critic2_target = Critic(state_size=state_size,
+                                        hidden_sizes=[128, 128],
+                                        action_size=action_size).to(device)
+            self.Actor_target = Actor(state_size=state_size,
+                                                hidden_sizes=[128, 128],
+                                                action_size=action_size).to(device)
+            # Set the target nets in eval
+            self.Critic1_target.eval()
+            self.Critic2_target.eval()
+            self.Actor_target.eval()
 
-        # Copying the weights of the Q and Policy networks to the target networks
-        self._copy_nets(soft_update = False)
+            # Copying the weights of the Q and Policy networks to the target networks
+            self._copy_nets()
 
-        # Initializing the optimizers, TO DO: Use different learning rates for Q and Policy networks
-        self.optimizer_critic = torch.optim.Adam(list(self.Critic1.parameters()) + list(self.Critic2.parameters()),
-                                            lr = 0.0001,
-                                            eps = 0.000001)
-        self.optimizer_actor = torch.optim.Adam(self.Actor.parameters(),
-                                            lr = 0.00001,
-                                            eps = 0.000001)
-        #self.critic = self.initOptim(optim=agent_settings["OPTIMIZER"], parameters=list(self.Critic1.parameters()) + list(self.Critic2.parameters()))
-        #self.optimizer_actor = self.initOptim(optim=agent_settings["OPTIMIZER"], parameters=self.Actor.parameters())
+        # Initializing the optimizers
+        self.optimizer_actor = self.initOptim(optim = td3_settings["ACTOR"]["OPTIMIZER"],
+                                           parameters = self.Actor.parameters())
+        self.optimizer_critic = self.initOptim(optim = td3_settings["CRITIC"]["OPTIMIZER"],
+                                           parameters = list(self.Critic1.parameters()) + list(self.Critic2.parameters()))
 
         #Define Loss function
-        self.criterion = torch.nn.SmoothL1Loss()
+        self.criterion = self.initLossFunction(loss_name = td3_settings["CRITIC"]["LOSS_FUNCTION"])
 
     def act(self, state: torch.Tensor) -> torch.Tensor:
         """
@@ -130,31 +131,40 @@ class TD3Agent(Agent):
         """
         if self.isEval:
             self.epsilon = 0
-
+        
         with torch.no_grad():
-            # action squeezed in -1 to 1 via tanh (+ noise)
-            action_deterministic = self.Actor.forward(state)
-            action = action_deterministic + torch.randn_like(action_deterministic) * self.epsilon
-            # rescale the action to the action space
-            action = action * self.action_scale + self.action_bias
-            action = torch.clamp(action, self.action_low, self.action_high)
-
-        action = action.squeeze().cpu().numpy()
-
-        action = np.expand_dims(action, axis = 0)
+            #Exploration noise
+            noise = torch.clamp(
+                torch.randn(self.action_space.shape[0], device=self.device) * self.epsilon,
+                min=-self.noise_clip,
+                max=self.noise_clip)
+            
+            #Forward pass for the Actor network and rescaling
+            det_action = self.Actor.forward(state) * self.action_scale + self.action_bias
+            action = det_action 
+            action = torch.clamp(
+                det_action + noise, 
+                min=self.action_low, #Minimum action value
+                max=self.action_high) #Maximum action value
+            
+        action = action.cpu().numpy()
         return action
 
-    def calc_td_target(self, reward: torch.Tensor, done: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
+    def critic_forward(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, done: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
         """
-        Calculates the TD Target
+        Calculates the TD Target and the loss for the Q networks
         1. Sample the next action from the target Actor network using gaussian exploration noise
         2. Calculate the Q values for the next state and next action using both target Q networks
         3. Calculate the TD Target by bootstrapping the minimum of the two Q networks
+        4. Calculate the loss for both Q networks using the TD Target
         """
 
         with torch.no_grad():
             # Exploration noise
-            noise = self.noise.sampe()
+            noise = torch.clamp(
+                torch.randn(self.action_space.shape[0], device = self.device) * self.epsilon,
+                min = -self.noise_clip,
+                max = self.noise_clip)
 
             if self.use_target_net:
                 # 1. Next action via the target Actor network
@@ -173,19 +183,24 @@ class TD3Agent(Agent):
                 next_action = self.Actor.forward(next_state) * self.action_scale + self.action_bias
                 next_action = torch.clamp(
                     next_action + noise,
-                    min = self.action_low,  # Minimum action value
-                    max = self.action_high)  # Maximum action value
+                    min=self.action_low, #Minimum action value
+                    max=self.action_high) #Maximum action value
 
-                # 2. Forward pass for both Q networks
+                #2. Forward pass for both Q networks
                 q_prime1 = self.Critic1.forward(next_state, next_action)
                 q_prime2 = self.Critic2.forward(next_state, next_action)
-
-            # 3. Bootstrapping the minimum of the two Q networks
+                
+            #3. Bootstrapping the minimum of the two Q networks
             td_target = reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2)
+            
+        #4. Logging the Q values for the next state and next action
+        Critic1_loss = self.criterion(self.Critic1.forward(state, action), td_target)
+        Critic2_loss = self.criterion(self.Critic2.forward(state, action), td_target)
+        Critic_loss = Critic1_loss + Critic2_loss
+            
+        return Critic_loss
 
-        return td_target
-
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
         """
         Compute forward and backward pass for the Q and Policy networks
         """
@@ -194,36 +209,41 @@ class TD3Agent(Agent):
         losses = []
         # We start at i=1 to prevent a direct update of the weights
         for i in range(1, self.opt_iter + 1):
-            # Sample from the replay memory
-            state, action, reward, next_state, done, info = memory.sample(self.batch_size, randomly = True)
-
-            # Forward pass for Q networks
-            td_target = self.calc_td_target(reward, done, next_state)
-            Critic1_loss = self.criterion(self.Critic1.forward(state, action), td_target)
-            Critic2_loss = self.criterion(self.Critic2.forward(state, action), td_target)
-            Critic_loss = Critic1_loss + Critic2_loss
+            #Sample from the replay memory
+            state, action, reward, next_state, done, info = memory.sample(self.batch_size, randomly=True)
+            state = state.float()
+            action = action.float()
+            reward = reward.float()
+            next_state = next_state.float()
+            #Forward pass for Q networks
+            if self.USE_BF_16:
+                with torch.autocast(device_type = self.device.type, dtype = torch.bfloat16):
+                        Critic_loss = self.critic_forward(state, action, reward, done, next_state)
+            else:
+                Critic_loss = self.critic_forward(state, action, reward, done, next_state)
             
             #Backward step for Q networks
             self.optimizer_critic.zero_grad()
             Critic_loss.backward()
             if self.use_gradient_clipping:
-                torch.nn.utils.clip_grad_value_(
-                    parameters = list(self.Critic1.parameters()) + list(self.Critic2.parameters()),
-                    clip_value = self.gradient_clipping_value, foreach = self.use_clip_foreach)
+                torch.nn.utils.clip_grad_value_(parameters=list(self.Q1.parameters()) + list(self.Q2.parameters()), clip_value=self.gradient_clipping_value, foreach=self.use_clip_foreach)
             self.optimizer_critic.step()
             
-            # Get the target for Policy network
-            q_1 = self.Critic1.forward(state, self.Actor.forward(state))
-            policy_loss = -torch.mean(q_1)
+            #Get the target for Policy network
+            if self.USE_BF_16:
+                with torch.autocast(device_type = self.device.type, dtype = torch.bfloat16):
+                    q_1 = self.Critic1.forward(state, self.Actor.forward(state))
+                    policy_loss = -torch.mean(q_1)
+            else:
+                q_1 = self.Critic1.forward(state, self.Actor.forward(state))
+                policy_loss = -torch.mean(q_1)
             
             # Backward step for Policy network
             if i % self.policy_delay == 0:
                 self.optimizer_actor.zero_grad()
                 policy_loss.backward()
                 if self.use_gradient_clipping:
-                    torch.nn.utils.clip_grad_value_(parameters = self.Actor.parameters(),
-                                                    clip_value = self.gradient_clipping_value,
-                                                    foreach = self.use_clip_foreach)
+                    torch.nn.utils.clip_grad_value_(parameters=self.policy.parameters(), clip_value=self.gradient_clipping_value, foreach=self.use_clip_foreach)
                 self.optimizer_actor.step()
 
             #Logging the losses, here only the critic loss
@@ -234,8 +254,8 @@ class TD3Agent(Agent):
 
         #after each optimization, update actor and critic target networks
         if episode_i % self.target_net_update_freq == 0 and self.use_target_net:
-            self._copy_nets(soft_update = self.use_soft_updates)
-
+            self._copy_nets()
+        
         return losses
 
     def setMode(self, eval=False) -> None:
@@ -258,62 +278,51 @@ class TD3Agent(Agent):
         """
         Saves the model parameters of the agent.
         """
-        checkpoint = {
-            "actor": self.Actor.state_dict(),
-            "critic1": self.Critic1.state_dict(),
-            "critic2": self.Critic2.state_dict(),
-            "iteration": iteration
-        }
+        checkpoint = self.export_checkpoint()
 
         directory = get_path(f"output/checkpoints/{model_name}")
         file_path = os.path.join(directory, f"{model_name}_{iteration:05}.pth")
+
+        # Ensure the directory exists
         os.makedirs(directory, exist_ok = True)
+
         torch.save(checkpoint, file_path)
-        print(f"Actor and Critic weights saved successfully!")
+        logging.info(f"Iteration: {iteration} TD3 checkpoint saved successfully!")
 
     def loadModel(self, file_name: str) -> None:
+        """
+        Loads the model parameters of the agent.
+        """
         try:
             checkpoint = torch.load(file_name, map_location=self.device)
-            self.Actor.load_state_dict(checkpoint["actor"])
-            self.Critic1.load_state_dict(checkpoint["critic1"])
-            self.Critic2.load_state_dict(checkpoint["critic2"])
-            print(f"Model loaded successfully from {file_name}")
+            self.import_checkpoint(checkpoint)
+            logging.info(f"Model loaded successfully from {file_name}")
         except FileNotFoundError:
-            print(f"Error: File {file_name} not found.")
+            logging.error(f"Error: File {file_name} not found.")
         except Exception as e:
-            print(f"An error occurred while loading the model: {str(e)}")
+            logging.error(f"An error occurred while loading the model: {str(e)}")
 
-    def _copy_nets(self, soft_update: bool) -> None:
-        """
-        Updates the target network with the weights of the original one
-        If soft_update is True, we perform a soft update via \tau \cdot \theta + (1 - \tau) \cdot \theta'
-        """
+    def _copy_nets(self) -> None:
         assert self.use_target_net == True
-        with torch.no_grad():
-            if soft_update:
-                for target_param, param in zip(self.Critic1_target.parameters(), self.Critic1.parameters()):
-                    target_param.data.copy_(
-                        param.data * self.tau + target_param.data * (1 - self.tau) if soft_update  # Soft update
-                        else param.data  # Hard update
-                    )
-                for target_param, param in zip(self.Critic2_target.parameters(), self.Critic2.parameters()):
-                    target_param.data.copy_(
-                        param.data * self.tau + target_param.data * (1 - self.tau) if soft_update
-                        else param.data
-                    )
-                for target_param, param in zip(self.Actor_target.parameters(), self.Actor.parameters()):
-                    target_param.data.copy_(
-                        param.data * self.tau + target_param.data * (1 - self.tau) if soft_update
-                        else param.data
-                    )
-            else:
-                #Copying the weights of the Q and Policy networks to the target networks
-                self.Critic1_target.load_state_dict(self.Critic1.state_dict())
-                self.Critic2_target.load_state_dict(self.Critic2.state_dict())
-                self.Actor_target.load_state_dict(self.Actor.state_dict())
+        # Step 01: Copy the actor net
+        self.updateTargetNet(soft_update = self.use_soft_updates, source = self.Actor,
+                             target = self.Actor_target)
+
+        # Step 02: Copy the critic nets
+        self.updateTargetNet(soft_update = self.use_soft_updates, source = self.Critic1,
+                             target = self.Critic1_target)
+        self.updateTargetNet(soft_update = self.use_soft_updates, source = self.Critic2,
+                             target = self.Critic2_target)
 
     def import_checkpoint(self, checkpoint: dict) -> None:
-        raise NotImplementedError
+        self.Actor.load_state_dict(checkpoint["Actor"])
+        self.Critic1.load_state_dict(checkpoint["Critic1"])
+        self.Critic2.load_state_dict(checkpoint["Critic2"])
 
     def export_checkpoint(self) -> dict:
-        raise NotImplementedError
+        checkpoint = {
+            "Actor": self.Actor.state_dict(),
+            "Critic1": self.Critic1.state_dict(),
+            "Critic2": self.Critic2.state_dict(),
+        }
+        return checkpoint

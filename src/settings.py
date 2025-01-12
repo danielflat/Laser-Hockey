@@ -5,7 +5,7 @@ from time import localtime, strftime
 
 import torch
 
-from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
+from src.util.constants import ADAM, DDPG_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
 
 _DEFAULT_OPTIMIZER = {
@@ -18,7 +18,6 @@ _DEFAULT_OPTIMIZER = {
     # if we have CUDA, we can use the fusion implementation of Adam -> Faster
 }
 _DEFAULT_LOSS_FUNCTION = SMOOTH_L1_LOSS
-
 _DEFAULT_NOISE = {
     "NOISE_TYPE": PINK_NOISE,
     "NOISE_FACTOR": 0.5,
@@ -32,7 +31,6 @@ _DEFAULT_NOISE = {
         "DT": 1e-2,
     }
 }
-
 
 SETTINGS = {
     # The settings for the main.py
@@ -125,13 +123,33 @@ SETTINGS = {
             },
             "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
-        "NOISE": _DEFAULT_NOISE
+        "NOISE": _DEFAULT_NOISE,
 
     },
     # The specific settings for the TD3 agent
     "TD3": {
-        "OPTIMIZER": _DEFAULT_OPTIMIZER,
-        "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
+        "ACTOR": {
+            "OPTIMIZER": {
+                "OPTIM_NAME": ADAM,
+                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
+                "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
+                "EPS": 1e-8,  # eps Adam param
+                "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+                "USE_FUSION": torch.cuda.is_available()
+            },
+        },
+        # Specific settings for the critic network
+        "CRITIC": {
+            "OPTIMIZER": {
+                "OPTIM_NAME": ADAM,  # Which optimizer to use
+                "LEARNING_RATE": 0.001,  # The learning rate for the agent
+                "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
+                "EPS": 1e-8,  # eps Adam param
+                "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+                "USE_FUSION": torch.cuda.is_available()
+            },
+            "LOSS_FUNCTION": SMOOTH_L1_LOSS,
+        },
         "POLICY_DELAY": 2,  # The delay of the policy optimization
         "NOISE_CLIP": 1,  # The gaussian noise clip value
         "NOISE": _DEFAULT_NOISE
@@ -145,14 +163,34 @@ SETTINGS = {
         "HIDDEN_DIM": 256
     },
     "MPO": {
+        "ACTOR": {
+            "OPTIMIZER": {
+                "OPTIM_NAME": ADAM,
+                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
+                "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
+                "EPS": 1e-8,  # eps Adam param
+                "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+                "USE_FUSION": torch.cuda.is_available()
+            },
+        },
+        # Specific settings for the critic network
+        "CRITIC": {
+            "OPTIMIZER": {
+                "OPTIM_NAME": ADAM,  # Which optimizer to use
+                "LEARNING_RATE": 0.001,  # The learning rate for the agent
+                "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
+                "EPS": 1e-8,  # eps Adam param
+                "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+                "USE_FUSION": torch.cuda.is_available()
+            },
+            "LOSS_FUNCTION": SMOOTH_L1_LOSS,
+        },
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
         "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
-        "HIDDEN_DIM": 64,
-        "SAMPLE_ACTION_NUM": 10,
-        "DUAL_CONSTAINT": 0.1,
-        "KL_CONSTRAINT": 0.01,
-        "MSTEP_ITER": 10,
-        "ALPHA_SCALE": 1.0
+        "SAMPLE_ACTION_NUM": 64,  # Number of actions to sample for nonparametric policy optimization
+        "MSTEP_ITER": 1,
+        "DISCRETE": False
+        # All other Hyperparameters are set in the MPO class
     },
     "TD_MPC2": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
