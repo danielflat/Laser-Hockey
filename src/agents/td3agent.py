@@ -1,14 +1,14 @@
+import logging
 import os
-import logging 
+from typing import List
 
-import numpy as np
 import torch
 from torch import device, nn
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util.directoryutil import get_path
-from src.util.noiseutil import initNoise
+
 """
 Author: Andre Pfrommer
 
@@ -22,7 +22,7 @@ TODOS:
 ####################################################################################################
 
 class Critic(nn.Module):
-    def __init__(self, state_size: int, hidden_sizes: list[int], action_size: int):
+    def __init__(self, state_size: int, hidden_sizes: List[int], action_size: int):
         super().__init__()
 
         self.network = nn.Sequential(
@@ -44,7 +44,7 @@ class Critic(nn.Module):
         return self.network(concat_input)
 
 class Actor(nn.Module):
-    def __init__(self, state_size: int, hidden_sizes: list[int], action_size: int):
+    def __init__(self, state_size: int, hidden_sizes: List[int], action_size: int):
         super().__init__()
 
         self.network = nn.Sequential(
@@ -200,7 +200,7 @@ class TD3Agent(Agent):
             
         return Critic_loss
 
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         """
         Compute forward and backward pass for the Q and Policy networks
         """
@@ -226,7 +226,9 @@ class TD3Agent(Agent):
             self.optimizer_critic.zero_grad()
             Critic_loss.backward()
             if self.use_gradient_clipping:
-                torch.nn.utils.clip_grad_value_(parameters=list(self.Q1.parameters()) + list(self.Q2.parameters()), clip_value=self.gradient_clipping_value, foreach=self.use_clip_foreach)
+                torch.nn.utils.clip_grad_value_(
+                    parameters = list(self.Critic1.parameters()) + list(self.Critic2.parameters()),
+                    clip_value = self.gradient_clipping_value, foreach = self.use_clip_foreach)
             self.optimizer_critic.step()
             
             #Get the target for Policy network
@@ -243,7 +245,9 @@ class TD3Agent(Agent):
                 self.optimizer_actor.zero_grad()
                 policy_loss.backward()
                 if self.use_gradient_clipping:
-                    torch.nn.utils.clip_grad_value_(parameters=self.policy.parameters(), clip_value=self.gradient_clipping_value, foreach=self.use_clip_foreach)
+                    torch.nn.utils.clip_grad_value_(parameters = self.Actor.parameters(),
+                                                    clip_value = self.gradient_clipping_value,
+                                                    foreach = self.use_clip_foreach)
                 self.optimizer_actor.step()
 
             #Logging the losses, here only the critic loss
