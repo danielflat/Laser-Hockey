@@ -20,6 +20,7 @@ MPO_ALGO = "MPO_Algo"
 RANDOM_ALGO = "Random_Algo"
 WEAK_COMP_ALGO = "Weak_Comp_Algo"
 STRONG_COMP_ALGO = "Strong_Comp_Algo"
+TDMPC2_ALGO = "TD-MPC-2_Algo"
 
 # All Optimizers
 ADAMW = "AdamW"
@@ -59,6 +60,7 @@ SUPPORTED_ALGORITHMS = {
     RANDOM_ALGO,
     WEAK_COMP_ALGO,
     STRONG_COMP_ALGO,
+    TDMPC2_ALGO
 }
 SUPPORTED_OPTIMIZERS = {
     ADAMW,

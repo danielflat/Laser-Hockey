@@ -5,8 +5,8 @@ from time import localtime, strftime
 
 import torch
 
-from src.util.constants import ADAM, DDPG_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PINK_NOISE, \
-    SMOOTH_L1_LOSS
+from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
+    SMOOTH_L1_LOSS, TDMPC2_ALGO
 
 _DEFAULT_OPTIMIZER = {
     "OPTIM_NAME": ADAM,  # Which optimizer to use
@@ -19,22 +19,37 @@ _DEFAULT_OPTIMIZER = {
 }
 _DEFAULT_LOSS_FUNCTION = SMOOTH_L1_LOSS
 
+_DEFAULT_NOISE = {
+    "NOISE_TYPE": PINK_NOISE,
+    "NOISE_FACTOR": 0.5,
+    "NOISE_PARAMS": {
+        # Params for white noise
+        "MEAN": 0,
+        "STD": 0.1,
+
+        # Params for OU noise
+        "THETA": 0.15,
+        "DT": 1e-2,
+    }
+}
+
+
 SETTINGS = {
     # The settings for the main.py
     "MAIN": {
         "SEED": 24,  # The seed that we want to use
         "DEVICE": torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # On which machine is it running?
         "USE_TF32": True,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
-        "USE_ENV": HOCKEY,  # The used environment
+        "USE_ENV": PENDULUM,  # The used environment
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
         "SELF_PLAY": False,  # If the agent should play against itself like in AlphaGo
-        "USE_ALGO": DDPG_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
+        "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
         "BUFFER_SIZE": 1000000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
-        "NUM_TRAINING_EPISODES": 2000,  # How many training episodes should be run?
+        "NUM_TRAINING_EPISODES": 100,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
@@ -48,13 +63,13 @@ SETTINGS = {
         "USE_BF16": False,  # Uses BF16 in forward pass or not. Makes it faster, but you have lower precision
         "USE_COMPILE": False,  # if torch.compile should be used for the networks
         "OPT_ITER": 32,  # How many iterations should be done of gradient descent when calling agent.optimize()?
-        "BATCH_SIZE": 128,  # The batch size for doing gradient descent
+        "BATCH_SIZE": 200,  # The batch size for doing gradient descent
         "DISCOUNT": 0.95,  # The discount factor for the TD error
 
         # TARGET NET STRATEGY
         "USE_TARGET_NET": True,  # If a target net is used
-        "USE_SOFT_UPDATES": False,  # If the target network is updated. True = softly, False = hardly
-        "TARGET_NET_UPDATE_FREQ": 100,
+        "USE_SOFT_UPDATES": True,  # If the target network is updated. True = softly, False = hardly
+        "TARGET_NET_UPDATE_FREQ": 1,
         # int: Gives the frequency when to update the target net. If target net is disabled, this param is not relevant. If == 1, you update at every step.
         "TAU": 0.001,  # Soft update parameter
 
@@ -89,7 +104,7 @@ SETTINGS = {
         "ACTOR": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,
-                "LEARNING_RATE": 0.00001,  # The learning rate for the agent
+                "LEARNING_RATE": 3e-4,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
                 "WEIGHT_DECAY": 1e-2,  # The weight decay rate
@@ -101,7 +116,7 @@ SETTINGS = {
         "CRITIC": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,  # Which optimizer to use
-                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
+                "LEARNING_RATE": 3e-3,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
                 "WEIGHT_DECAY": 1e-2,  # The weight decay rate
@@ -110,19 +125,7 @@ SETTINGS = {
             },
             "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
-        "NOISE": {
-            "NOISE_TYPE": PINK_NOISE,
-            "NOISE_FACTOR": 0.1,
-            "NOISE_PARAMS": {
-                # Params for white and pink noise
-                "MEAN": 0,  # only important for white noise
-                "STD": 0.1,
-
-                # Params for OU noise
-                "THETA": 0.15,
-                "DT": 1e-2,
-            }
-        }
+        "NOISE": _DEFAULT_NOISE
 
     },
     # The specific settings for the TD3 agent
@@ -131,6 +134,7 @@ SETTINGS = {
         "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
         "POLICY_DELAY": 2,  # The delay of the policy optimization
         "NOISE_CLIP": 1,  # The gaussian noise clip value
+        "NOISE": _DEFAULT_NOISE
     },
     "SAC": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
@@ -149,9 +153,21 @@ SETTINGS = {
         "KL_CONSTRAINT": 0.01,
         "MSTEP_ITER": 10,
         "ALPHA_SCALE": 1.0
+    },
+    "TD_MPC2": {
+        "OPTIMIZER": _DEFAULT_OPTIMIZER,
+        "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
+        "HORIZON": 3,
+        "MMPI_ITERATIONS": 6,
+        "NUM_TRAJECTORIES": 8,
+        "NUM_SAMPLES": 256,
+        "NUM_ELITES": 64,
+        "MIN_STD": 0.05,
+        "MAX_STD": 2,
+        "TEMPERATURE": 0.5,
+        "LATENT_SIZE": 512,
     }
 }
-
 # Convenient Constants
 MAIN_SETTINGS = SETTINGS["MAIN"]
 AGENT_SETTINGS = SETTINGS["AGENT"]
@@ -161,3 +177,4 @@ DDPG_SETTINGS = SETTINGS["DDPG"]
 TD3_SETTINGS = SETTINGS["TD3"]
 SAC_SETTINGS = SETTINGS["SAC"]
 MPO_SETTINGS = SETTINGS["MPO"]
+TD_MPC2_SETTINGS = SETTINGS["TD_MPC2"]

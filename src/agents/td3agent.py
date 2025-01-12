@@ -15,11 +15,11 @@ class Critic(nn.Module):
         super().__init__()
 
         self.network = nn.Sequential(
-            nn.Linear(state_size + action_size, hidden_sizes[0]),
-            nn.ReLU(),
-            nn.Linear(hidden_sizes[0], hidden_sizes[1]),
-            nn.ReLU(),
-            nn.Linear(hidden_sizes[1], 1)
+            nn.Linear(state_size + action_size, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 1)
         )
 
         self.loss = torch.nn.SmoothL1Loss()
@@ -37,13 +37,11 @@ class Actor(nn.Module):
         super().__init__()
 
         self.network = nn.Sequential(
-            nn.Linear(state_size, hidden_sizes[0]),
-            nn.ReLU(),
-            nn.Linear(hidden_sizes[0], hidden_sizes[1]),
-            nn.ReLU(),
-            nn.Linear(hidden_sizes[1], hidden_sizes[2]),
-            nn.ReLU(),
-            nn.Linear(hidden_sizes[2], action_size),
+            nn.Linear(state_size, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, action_size),
             nn.Tanh()
         )
 
@@ -81,6 +79,7 @@ class TD3Agent(Agent):
 
         self.policy_delay = td3_settings["POLICY_DELAY"]
         self.noise_clip = td3_settings["NOISE_CLIP"]
+        self.noise = td3_settings["NOISE"]
 
         # Here we have 2 Q Networks
         self.Critic1 = Critic(state_size=state_size,
@@ -155,10 +154,7 @@ class TD3Agent(Agent):
 
         with torch.no_grad():
             # Exploration noise
-            noise = torch.clamp(
-                torch.randn(self.action_space.shape[0], device = self.device) * self.epsilon,
-                min = -self.noise_clip,
-                max = self.noise_clip)
+            noise = self.noise.sampe()
 
             if self.use_target_net:
                 # 1. Next action via the target Actor network
@@ -211,19 +207,23 @@ class TD3Agent(Agent):
             self.optimizer_critic.zero_grad()
             Critic_loss.backward()
             if self.use_gradient_clipping:
-                torch.nn.utils.clip_grad_value_(parameters=list(self.Q1.parameters()) + list(self.Q2.parameters()), clip_value=self.gradient_clipping_value, foreach=self.use_clip_foreach)
+                torch.nn.utils.clip_grad_value_(
+                    parameters = list(self.Critic1.parameters()) + list(self.Critic2.parameters()),
+                    clip_value = self.gradient_clipping_value, foreach = self.use_clip_foreach)
             self.optimizer_critic.step()
             
             # Get the target for Policy network
-            q_1 = self.Critic1.forward(state, self.policy.forward(state))
+            q_1 = self.Critic1.forward(state, self.Actor.forward(state))
             policy_loss = -torch.mean(q_1)
             
             # Backward step for Policy network
             if i % self.policy_delay == 0:
-                self.optimizer_policy.zero_grad()
+                self.optimizer_actor.zero_grad()
                 policy_loss.backward()
                 if self.use_gradient_clipping:
-                    torch.nn.utils.clip_grad_value_(parameters=self.policy.parameters(), clip_value=self.gradient_clipping_value, foreach=self.use_clip_foreach)
+                    torch.nn.utils.clip_grad_value_(parameters = self.Actor.parameters(),
+                                                    clip_value = self.gradient_clipping_value,
+                                                    foreach = self.use_clip_foreach)
                 self.optimizer_actor.step()
 
             #Logging the losses, here only the critic loss
@@ -291,17 +291,17 @@ class TD3Agent(Agent):
         assert self.use_target_net == True
         with torch.no_grad():
             if soft_update:
-                for target_param, param in zip(self.targetQ1.parameters(), self.Q1.parameters()):
+                for target_param, param in zip(self.Critic1_target.parameters(), self.Critic1.parameters()):
                     target_param.data.copy_(
                         param.data * self.tau + target_param.data * (1 - self.tau) if soft_update  # Soft update
                         else param.data  # Hard update
                     )
-                for target_param, param in zip(self.targetQ2.parameters(), self.Q2.parameters()):
+                for target_param, param in zip(self.Critic2_target.parameters(), self.Critic2.parameters()):
                     target_param.data.copy_(
                         param.data * self.tau + target_param.data * (1 - self.tau) if soft_update
                         else param.data
                     )
-                for target_param, param in zip(self.policy_target.parameters(), self.policy.parameters()):
+                for target_param, param in zip(self.Actor_target.parameters(), self.Actor.parameters()):
                     target_param.data.copy_(
                         param.data * self.tau + target_param.data * (1 - self.tau) if soft_update
                         else param.data

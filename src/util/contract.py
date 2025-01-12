@@ -6,6 +6,8 @@ e.g. optimizers to prevent code duplicates.
 
 Author: Daniel
 """
+from __future__ import annotations
+
 import logging
 import os
 
@@ -24,13 +26,14 @@ from src.agents.ppoagent import PPOAgent
 from src.agents.randomagent import RandomAgent
 from src.agents.sac import SoftActorCritic
 from src.agents.td3agent import TD3Agent
+from src.agents.tdmpc2agent import TDMPC2Agent
 from src.settings import AGENT_SETTINGS, DDPG_SETTINGS, DQN_SETTINGS, MPO_SETTINGS, PPO_SETTINGS, SAC_SETTINGS, \
-    TD3_SETTINGS
+    TD3_SETTINGS, TD_MPC2_SETTINGS
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, \
     STRONG_COMP_ALGO, SUPPORTED_ALGORITHMS, \
     SUPPORTED_ENVIRONMENTS, \
     SUPPORTED_RENDER_MODES, \
-    TD3_ALGO, WEAK_COMP_ALGO
+    TD3_ALGO, TDMPC2_ALGO, WEAK_COMP_ALGO
 from src.util.directoryutil import get_path
 from src.util.discreteactionmapper import DiscreteActionWrapper
 
@@ -67,7 +70,8 @@ def initAgent(use_algo: str, env, device: device,
               agent_settings: dict = AGENT_SETTINGS, dqn_settings: dict = DQN_SETTINGS,
               ppo_settings: dict = PPO_SETTINGS,
               ddpg_settings: dict = DDPG_SETTINGS, td3_settings: dict = TD3_SETTINGS, sac_settings: dict = SAC_SETTINGS,
-              mpo_settings: dict = MPO_SETTINGS) -> Agent:
+              mpo_settings: dict = MPO_SETTINGS,
+              td_mpc2_settings: dict = TD_MPC2_SETTINGS) -> Agent:
     """
     Initialize the agent based on the config
     """
@@ -118,6 +122,14 @@ def initAgent(use_algo: str, env, device: device,
             return CompAgent(is_Weak = True, agent_settings = agent_settings, device = device)
         elif use_algo == STRONG_COMP_ALGO:
             return CompAgent(is_Weak = False, agent_settings = agent_settings, device = device)
+        elif use_algo == TDMPC2_ALGO:
+            return TDMPC2Agent(
+                state_space = state_space,
+                action_space = action_space,
+                agent_settings = agent_settings,
+                td_mpc2_settings = td_mpc2_settings,
+                device = device,
+            )
     else:
         raise Exception(f"The algorithm '{use_algo}' is not supported! Please choose another one!")
 

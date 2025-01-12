@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 import numpy as np
 import torch
@@ -467,7 +468,7 @@ class MPOAgent(Agent):
         qij = torch.softmax(q_target / self.η, dim=1) # (K, N) or (K, da)
         return qij
 
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         """
         Optimize actor and critic networks based on experience replay.
             1. Policy Evaluation: Update Critic via TD Learning

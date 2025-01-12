@@ -1,3 +1,5 @@
+import logging
+import os
 from abc import ABC, abstractmethod
 from typing import List
 
@@ -10,6 +12,7 @@ from src.replaymemory import ReplayMemory
 from src.util.constants import ADAM, ADAMW, CROSS_ENTROPY_LOSS, EXPONENTIAL, L1_LOSS, LINEAR, MSE_LOSS, SMOOTH_L1_LOSS, \
     SUPPORTED_LOSS_FUNCTIONS, \
     SUPPORTED_OPTIMIZERS
+from src.util.directoryutil import get_path
 
 
 class Agent(ABC):
@@ -54,19 +57,34 @@ class Agent(ABC):
         """
         pass
 
-    @abstractmethod
     def saveModel(self, model_name: str, iteration: int) -> None:
         """
         Saves the model parameters of the agent.
         """
-        pass
 
-    @abstractmethod
+        checkpoint = self.export_checkpoint()
+
+        directory = get_path(f"output/checkpoints/{model_name}")
+        file_path = os.path.join(directory, f"{model_name}_{iteration:05}.pth")
+
+        # Ensure the directory exists
+        os.makedirs(directory, exist_ok = True)
+
+        torch.save(checkpoint, file_path)
+        logging.info(f"Training Iter: {iteration}: Checkpoint of {self.__repr__()} saved successfully!")
+
     def loadModel(self, file_name: str) -> None:
         """
         Loads the model parameters of the agent.
         """
-        pass
+        try:
+            checkpoint = torch.load(file_name, map_location = self.device)
+            self.import_checkpoint(checkpoint)
+            logging.info(f"Model for {self.__repr__()} loaded successfully from {file_name}")
+        except FileNotFoundError:
+            logging.error(f"Error: File {file_name} not found.")
+        except Exception as e:
+            logging.error(f"An error occurred while loading the model: {str(e)}")
 
     @abstractmethod
     def import_checkpoint(self, checkpoint: dict) -> None:

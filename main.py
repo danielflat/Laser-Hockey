@@ -73,7 +73,7 @@ def evaluate_main_agent(main_agent, opponent, env, num_episodes = 10):
     return average_reward, win_rate
 
 
-def do_solo_training(env, agent, memory):
+def do_other_env_training(env, agent, memory):
     episode_durations = []
     episode_rewards = []
     episode_losses = []
@@ -147,7 +147,7 @@ def do_solo_training(env, agent, memory):
             seed = SEED + i_training)  # by resetting always a different but predetermined seed, we ensure the reproducibility of the results
 
 
-def do_testing(env, agent):
+def do_other_env_testing(env, agent):
     test_durations = []
     test_rewards = []
     state, info = env.reset()
@@ -160,9 +160,6 @@ def do_testing(env, agent):
         state = torch.tensor(state, device = DEVICE, dtype = torch.float32)
 
         for step in count(start = 1):
-            # Render the scene
-            env.render(mode = "human")
-
             # choose the action
             action = agent.act(state)
 
@@ -189,7 +186,7 @@ def do_testing(env, agent):
     return test_durations, test_rewards
 
 
-def do_multiple_training(env, agent, memory, opponent_pool: dict):
+def do_hockey_training(env, agent, memory, opponent_pool: dict):
     episode_durations = []
     episode_rewards = []
     episode_losses = []
@@ -328,7 +325,7 @@ def do_multiple_testing(env, agent, opponent_pool):
 
         for step in count(start = 1):
             # Render the scene every 10th episode
-            env.render(mode = "human" if i_test % 10 == 0 else None)
+            # env.render(mode = "human" if i_test % 10 == 0 else None)
 
             # choose the action
             action = agent.act(state)
@@ -448,23 +445,24 @@ def main():
                 # SAC_ALGO: sac_agent,
                 # MPO_ALGO: mpo_agent,
             }
-        do_multiple_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool)
+        do_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool)
 
     # If you use another env with a single player, train normally
     else:
-        do_solo_training(env = env, agent = agent, memory = memory)
+        do_other_env_training(env = env, agent = agent, memory = memory)
 
     # Testing loop
     logging.info("Training is done! Now we will do some testing!")
     agent.setMode(eval = True)  # Set the agent in eval mode
 
-    # if USE_ENV == HOCKEY:
-    #     test_durations, test_rewards = do_multiple_testing(env = env, agent = agent, opponent_pool = opponent_pool)
-    # else:
-    #     test_durations, test_rewards = do_testing(env = env, agent = agent)
-    # logging.info(f"Tests done! "
-    #              f"Durations average: {np.array(test_durations).mean():.4f} | Durations std. dev: {np.array(test_durations).std():.4f} | Durations variance: {np.array(test_durations).var():.4f} | "
-    #              f"Reward average: {np.array(test_rewards).mean():.4f} | Reward std. dev: {np.array(test_rewards).std():.4f} | Reward variance: {np.array(test_rewards).var():.4f}")
+    if USE_ENV == HOCKEY:
+        ...
+        # test_durations, test_rewards = do_multiple_testing(env = env, agent = agent, opponent_pool = opponent_pool)
+    else:
+        test_durations, test_rewards = do_other_env_testing(env = env, agent = agent)
+    logging.info(f"Tests done! "
+                 f"Durations average: {np.array(test_durations).mean():.4f} | Durations std. dev: {np.array(test_durations).std():.4f} | Durations variance: {np.array(test_durations).var():.4f} | "
+                 f"Reward average: {np.array(test_rewards).mean():.4f} | Reward std. dev: {np.array(test_rewards).std():.4f} | Reward variance: {np.array(test_rewards).var():.4f}")
     logging.info(f"Finished! 🚀")
 
 

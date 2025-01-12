@@ -6,9 +6,13 @@ authors = ["Flat <daniel.flat@wps.de>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
-torch = "2.2.2"
+python = "^3.8"
 numpy = "<2"
+torch = "2.2.2"
+gymnasium = { extras = ["box2d"], version = "^1.0.0" }
+pyyaml = "^6.0.2"
+matplotlib = "3.7"
+scipy = "1.9.3"
 
 
 [build-system]
