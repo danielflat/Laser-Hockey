@@ -79,8 +79,11 @@ class Actor(nn.Module):
         
         if self.continuous:
             # 2. Output layer for the mean and rescaling into the action space
+            action_low = self.action_low.unsqueeze(0)  # (1, da)
+            action_high = self.action_high.unsqueeze(0)  # (1, da)
+            
             mean = torch.sigmoid(self.mean_layer(x))  # (B, da)
-            mean = self.action_low + (self.action_high - self.action_low) * mean 
+            mean = action_low + (action_high - action_low) * mean 
             
             # 3. Output layer for the cholesky factorization of the covariance matrix
             cholesky_vector = self.cholesky_layer(x)  # (B, (da*(da+1))//2)
@@ -173,7 +176,8 @@ class Critic(nn.Module):
         assert not self.continuous
         
         all_q_values = self.forward(state, action) # (B, da)
-        q_value = all_q_values.gather(dim=1, index=action) # (B, 1)
+        q_value = all_q_values.gather(dim=1, index=action.long()) # (B, 1)
+        
         return q_value
     
     
@@ -234,11 +238,11 @@ class MPOAgent(Agent):
         else:
             self.da = action_space.n
         
-        self.hidden_dim = mpo_settings.get("HIDDEN_DIM", 256) 
+        self.hidden_dim = mpo_settings.get("HIDDEN_DIM", 128) 
         self.sample_action_num = mpo_settings.get("SAMPLE_ACTION_NUM", 64) #N
         self.mstep_iteration_num = mpo_settings.get("MSTEP_ITER", 1)
         self.ε_dual = mpo_settings.get("DUAL_CONSTAINT", 0.1) 
-        self.ε_kl = mpo_settings.get("KL_CONSTRAINT", 0.01) 
+        self.ε_kl = mpo_settings.get("KL_CONSTRAINT", 0.1) 
         self.ε_kl_μ = mpo_settings.get("KL_CONSTRAINT_MEAN", 0.01) 
         self.ε_kl_Σ = mpo_settings.get("KL_CONSTRAINT_VAR", 0.0001) 
         
@@ -247,8 +251,8 @@ class MPOAgent(Agent):
         self.α_μ_scale = mpo_settings.get("ALPHA_SCALE_MU", 1.0)
         self.α_Σ_scale = mpo_settings.get("ALPHA_SCALE_VAR", 100.0)
         self.α_max = mpo_settings.get("ALPHA_MAX", 1.0)
-        self.α_μ_max = mpo_settings.get("ALPHA_MAX_MU", 0.1)
-        self.α_Σ_max = mpo_settings.get("ALPHA_MAX_VAR", 10.0)
+        self.α_μ_max = mpo_settings.get("ALPHA_MAX_MU", 1.0)
+        self.α_Σ_max = mpo_settings.get("ALPHA_MAX_VAR", 0.1)
         
         #initialize variables to optimize
         self.η = np.random.rand() #E step, dual variable
@@ -263,7 +267,7 @@ class MPOAgent(Agent):
         self.target_critic = Critic(state_space, action_space, self.hidden_dim, self.continuous).to(device)
         self.target_actor.load_state_dict(self.actor.state_dict())
         self.target_critic.load_state_dict(self.critic.state_dict())
-
+        
         # Initializing the optimizers
         self.actor_optimizer = self.initOptim(optim = mpo_settings["ACTOR"]["OPTIMIZER"],
                                            parameters = self.actor.parameters())
@@ -300,10 +304,10 @@ class MPOAgent(Agent):
                     # Sample action from the multivariate Gaussian
                     proposed_action = π.sample()
                     #Add some noise
-                    noise = torch.randn_like(proposed_action) * self.epsilon
+                    noise = torch.randn_like(proposed_action) 
                     # Ensure actions are within the valid range
-                    action = torch.clamp(proposed_action + noise, self.action_low, self.action_high)
-                    action = action.numpy()[0]
+                    action = torch.clamp(proposed_action, self.action_low, self.action_high)
+                    action = proposed_action.numpy()[0]
             else:
                 if self.isEval:
                     # if you are in eval mode, get the greedy Action
@@ -336,6 +340,7 @@ class MPOAgent(Agent):
         B = states.size(0) #Batch size
         
         with torch.no_grad():
+            
             if self.continuous:
                 #target policy output given the next state
                 π_μ, π_A = self.target_actor(next_states)  # (B,)
@@ -349,7 +354,7 @@ class MPOAgent(Agent):
                 expected_next_q = self.target_critic(
                     expanded_next_states.reshape(-1, self.ds),  # (B * sample_num, ds)
                     sampled_next_actions.reshape(-1, self.da)  # (B * sample_num, da)
-                ).reshape(B, sample_num).mean(dim=1)  # (B,)
+                ).reshape(B, sample_num).mean(axis=1) # (B,)
                 
             else:
                 #Now we get only a single policy output
@@ -363,7 +368,7 @@ class MPOAgent(Agent):
                 expected_next_q = (π_p * next_q).sum(dim=1, keepdim=True).squeeze()  # (B,)
                 
             #TD target
-            q_new = rewards.squeeze() + self.discount * (1 - dones.squeeze()) * expected_next_q # (B,)
+            q_new = rewards.squeeze(-1) + self.discount * expected_next_q  # [200]
         
         #Calculate the loss
         if self.continuous:
@@ -402,11 +407,18 @@ class MPOAgent(Agent):
         :return: mean of determinanats of Σi, Σ
         ref : https://stanford.edu/~jduchi/projects/general_notes.pdf page.13
         """
+        def bt(m):
+            return m.transpose(dim0=-2, dim1=-1)
+
+
+        def btr(m):
+            return m.diagonal(dim1=-2, dim2=-1).sum(-1)
+        
         n = A.size(-1)
         μi = μi.unsqueeze(-1)  # (B, n, 1)
         μ = μ.unsqueeze(-1)  # (B, n, 1)
-        Σi = Ai @ Ai.transpose(dim0=-2, dim1=-1)  # (B, n, n)
-        Σ = A @ A.transpose(dim0=-2, dim1=-1)  # (B, n, n)
+        Σi = Ai @ bt(Ai)  # (B, n, n)
+        Σ = A @ bt(A)  # (B, n, n)
         Σi_det = Σi.det()  # (B,)
         Σ_det = Σ.det()  # (B,)
         # determinant can be minus due to numerical calculation error
@@ -417,7 +429,7 @@ class MPOAgent(Agent):
         Σ_inv = Σ.inverse()  # (B, n, n)
 
         inner_μ = ((μ - μi).transpose(-2, -1) @ Σi_inv @ (μ - μi)).squeeze()  # (B,)
-        inner_Σ = torch.log(Σ_det / Σi_det) - n + (Σ_inv @ Σi).diagonal(dim1=-2, dim2=-1).sum(-1) # (B,)
+        inner_Σ = torch.log(Σ_det / Σi_det) - n + btr(Σ_inv @ Σi) # (B,)
         C_μ = 0.5 * torch.mean(inner_μ)
         C_Σ = 0.5 * torch.mean(inner_Σ)
         return C_μ, C_Σ, torch.mean(Σi_det), torch.mean(Σ_det)
@@ -435,7 +447,6 @@ class MPOAgent(Agent):
         q_target_np = q_target.numpy()
         if not self.continuous:
             π_target_np = π_target.numpy() 
-        #print(q_target_np.shape)
             
         def dual(η):
             """
@@ -480,7 +491,7 @@ class MPOAgent(Agent):
         Optimize actor and critic networks based on experience replay.
             1. Policy Evaluation: Update Critic via TD Learning
             2. E-Step of Policy Improvement: Sample from Critic and update dual variable η to find action weights qij
-            3. M-Step of Policy Improvement: Update Actor via gradient ascent on the Lagrangian function
+            3. M-Step of Policy Improvement: Update Actor via gradient ascent on the MLP loss
         
         :param memory:
             (ReplayMemory) the replay memory
@@ -534,8 +545,7 @@ class MPOAgent(Agent):
                     #Get the target q values over all discrete actions
                     target_q = self.target_critic(states, None) # (K, da)
                     #Minimize the dual function to find the action weights qij
-                    qij = self.find_qij_dist(target_q, b_p) # (K, N) 
-                    #transpose the qij matrix for later computations
+                    qij = self.find_qij_dist(target_q, b_p) # (K, da) 
 
             # 3. M step. Policy Improvement (4.2 in paper)
             #Fitting an improved policy using the sampled q-values via gradient optimization on the Policy and the lagrangian function 
@@ -595,10 +605,10 @@ class MPOAgent(Agent):
                     
                     #MLE loss
                     loss_MLE = torch.mean(qij * π_log) # (K, da)
+                    
                     #Final loss
                     loss_actor = -(loss_MLE + self.η_kl * (self.ε_kl - kl))
-                    
-                    
+                
                 self.actor_optimizer.zero_grad()
                 loss_actor.backward()
                 if self.use_gradient_clipping:
@@ -664,7 +674,6 @@ class MPOAgent(Agent):
         # Step 01: Copy the actor net
         self.updateTargetNet(soft_update = self.use_soft_updates, source = self.actor,
                              target = self.target_actor)
-
         # Step 02: Copy the critic net
         self.updateTargetNet(soft_update = self.use_soft_updates, source = self.critic,
                              target = self.target_critic)
