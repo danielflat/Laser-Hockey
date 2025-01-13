@@ -5,7 +5,7 @@ from time import localtime, strftime
 
 import torch
 
-from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
+from src.util.constants import ADAM, DDPG_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
 
 _DEFAULT_OPTIMIZER = {
@@ -44,10 +44,10 @@ SETTINGS = {
         # If None, you use a continuous action space, else you use a discrete action set
         "SELF_PLAY": False,  # If the agent should play against itself like in AlphaGo
         "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
-        "BUFFER_SIZE": 1_000_000,  # How many items can be stored in the replay buffer?
+        "BUFFER_SIZE": 1000000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
-        "NUM_TRAINING_EPISODES": 100,  # How many training episodes should be run?
+        "NUM_TRAINING_EPISODES": 500,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
@@ -60,13 +60,13 @@ SETTINGS = {
         # GENERAL SETTINGS
         "USE_BF16": False,  # Uses BF16 in forward pass or not. Makes it faster, but you have lower precision
         "USE_COMPILE": False,  # if torch.compile should be used for the networks
-        "OPT_ITER": 128,  # How many iterations should be done of gradient descent when calling agent.optimize()?
-        "BATCH_SIZE": 200,  # The batch size for doing gradient descent
+        "OPT_ITER": 50,  # How many iterations should be done of gradient descent when calling agent.optimize()?
+        "BATCH_SIZE": 64,  # The batch size for doing gradient descent
         "DISCOUNT": 0.95,  # The discount factor for the TD error
 
         # TARGET NET STRATEGY
         "USE_TARGET_NET": True,  # If a target net is used
-        "USE_SOFT_UPDATES": True,  # If the target network is updated. True = softly, False = hardly
+        "USE_SOFT_UPDATES": False,  # If the target network is updated. True = softly, False = hardly
         "TARGET_NET_UPDATE_FREQ": 1,
         # int: Gives the frequency when to update the target net. If target net is disabled, this param is not relevant. If == 1, you update at every step.
         "TAU": 0.001,  # Soft update parameter
@@ -80,10 +80,8 @@ SETTINGS = {
         # If EPSILON_DECAY_STRATEGY == Linear, it determines either the amount of episodes until `EPSILON_MIN`. If EPSILON_DECAY_STRATEGY == EXPONENTIAL, it determines the rate of decay per episode. (if EXPONENTIAL: =1 in this case means no decay)
 
         # BACKWARD STEP STRATEGY
-        "USE_GRADIENT_CLIPPING": False,  # If the gradients should be clipped
-        "GRADIENT_CLIPPING_VALUE": 1.0,  # The gradient clipping value
-        "USE_NORM_CLIPPING": True,  # If the norm of the gradients should be clipped
-        "NORM_CLIPPING_VALUE": 20.0,  # The gradient clipping value
+        "USE_GRADIENT_CLIPPING": True,  # If the gradients should be clipped
+        "GRADIENT_CLIPPING_VALUE": 0.1,  # The gradient clipping value
         "USE_CLIP_FOREACH": torch.cuda.is_available(),
         # USE the foreach implementation of gradient clipping. Only relevant if 'USE_GRADIENT_CLIPPING' is True
     },
@@ -133,7 +131,7 @@ SETTINGS = {
         "ACTOR": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,
-                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
+                "LEARNING_RATE": 0.00001,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
                 "WEIGHT_DECAY": 1e-2,  # The weight decay rate
@@ -144,7 +142,7 @@ SETTINGS = {
         "CRITIC": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,  # Which optimizer to use
-                "LEARNING_RATE": 0.001,  # The learning rate for the agent
+                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
                 "WEIGHT_DECAY": 1e-2,  # The weight decay rate
@@ -168,10 +166,10 @@ SETTINGS = {
         "ACTOR": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,
-                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
+                "LEARNING_RATE": 3e-4,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
-                "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+                "WEIGHT_DECAY": 0,  # The weight decay rate
                 "USE_FUSION": torch.cuda.is_available()
             },
         },
@@ -179,16 +177,14 @@ SETTINGS = {
         "CRITIC": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,  # Which optimizer to use
-                "LEARNING_RATE": 0.001,  # The learning rate for the agent
+                "LEARNING_RATE": 3e-4,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
-                "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+                "WEIGHT_DECAY": 0,  # The weight decay rate
                 "USE_FUSION": torch.cuda.is_available()
             },
             "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
-        "OPTIMIZER": _DEFAULT_OPTIMIZER,
-        "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
         "SAMPLE_ACTION_NUM": 64,  # Number of actions to sample for nonparametric policy optimization
         "MSTEP_ITER": 1,
         "DISCRETE": False
@@ -197,7 +193,6 @@ SETTINGS = {
     "TD_MPC2": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
         "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
-        "NOISE": _DEFAULT_NOISE,
         "HORIZON": 3,
         "MMPI_ITERATIONS": 6,
         "NUM_TRAJECTORIES": 8,
