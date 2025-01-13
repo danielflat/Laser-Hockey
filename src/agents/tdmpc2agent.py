@@ -1,3 +1,4 @@
+import logging
 from typing import List
 
 import gymnasium
@@ -183,7 +184,10 @@ class TDMPC2Agent(Agent, nn.Module):
 
         self.policy_optim = torch.optim.Adam(self.policy_net.parameters(), lr = self.lr)
 
-        # self.world_model = WorldModel()
+        if self.USE_COMPILE:
+            logging.info("Start compiling the TD-MPC2 agent.")
+            self._update = torch.compile(self._update)
+            logging.info("Finished compiling the TD-MPC2 agent")
 
     def __repr__(self):
         """

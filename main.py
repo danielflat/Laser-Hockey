@@ -436,8 +436,8 @@ def main():
         else:
             opponent_pool = {
                 RANDOM_ALGO: random_agent,
-                WEAK_COMP_ALGO: weak_comp_agent,
-                STRONG_COMP_ALGO: strong_comp_agent,
+                # WEAK_COMP_ALGO: weak_comp_agent,
+                # STRONG_COMP_ALGO: strong_comp_agent,
                 # DQN_ALGO: dqn_agent,
                 # PPO_ALGO: ppo_agent,
                 # DDPG_ALGO: ddpg_agent,

@@ -1,19 +1,18 @@
-import os
 import logging
+import os
+from typing import List
+
 import numpy as np
-from scipy.optimize import minimize
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from scipy.optimize import minimize
+from torch.distributions import Categorical, MultivariateNormal
 
-from torch.nn.utils import clip_grad_norm_
-from torch.distributions import MultivariateNormal, Categorical
-
-from src.agent import Agent 
+from src.agent import Agent
 from src.replaymemory import ReplayMemory
-from src.util.constants import ADAM, MSE_LOSS, LINEAR, EXPONENTIAL
 from src.util.directoryutil import get_path
-from src.util.noiseutil import initNoise
+
 """
 Author : Andre Pfrommer
 """
@@ -486,7 +485,7 @@ class MPOAgent(Agent):
         qij = torch.softmax(q_target / self.η, dim=1) # (K, N) or (K, da)
         return qij
 
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> list[float]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         """
         Optimize actor and critic networks based on experience replay.
             1. Policy Evaluation: Update Critic via TD Learning
