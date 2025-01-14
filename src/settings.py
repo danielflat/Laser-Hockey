@@ -5,7 +5,7 @@ from time import localtime, strftime
 
 import torch
 
-from src.util.constants import ADAM, DDPG_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
+from src.util.constants import ADAM, TD3_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
 
 _DEFAULT_OPTIMIZER = {
@@ -31,23 +31,22 @@ _DEFAULT_NOISE = {
         "DT": 1e-2,
     }
 }
-
 SETTINGS = {
     # The settings for the main.py
     "MAIN": {
         "SEED": 24,  # The seed that we want to use
         "DEVICE": torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # On which machine is it running?
-        "USE_TF32": True,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
+        "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
         "USE_ENV": PENDULUM,  # The used environment
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
         "SELF_PLAY": False,  # If the agent should play against itself like in AlphaGo
-        "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
+        "USE_ALGO": TD3_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
         "BUFFER_SIZE": 1000000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
-        "NUM_TRAINING_EPISODES": 500,  # How many training episodes should be run?
+        "NUM_TRAINING_EPISODES": 1000,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
@@ -61,11 +60,11 @@ SETTINGS = {
         "USE_BF16": False,  # Uses BF16 in forward pass or not. Makes it faster, but you have lower precision
         "USE_COMPILE": False,  # if torch.compile should be used for the networks
         "OPT_ITER": 50,  # How many iterations should be done of gradient descent when calling agent.optimize()?
-        "BATCH_SIZE": 64,  # The batch size for doing gradient descent
+        "BATCH_SIZE": 32,  # The batch size for doing gradient descent
         "DISCOUNT": 0.95,  # The discount factor for the TD error
 
         # TARGET NET STRATEGY
-        "USE_TARGET_NET": True,  # If a target net is used
+        "USE_TARGET_NET": False,  # If a target net is used
         "USE_SOFT_UPDATES": False,  # If the target network is updated. True = softly, False = hardly
         "TARGET_NET_UPDATE_FREQ": 1,
         # int: Gives the frequency when to update the target net. If target net is disabled, this param is not relevant. If == 1, you update at every step.
@@ -74,7 +73,7 @@ SETTINGS = {
         # EPSILON GREEDY STRATEGY
         "EPSILON_DECAY_STRATEGY": EXPONENTIAL,
         # What kind of strategy should be picked in order to decay epsilon during training
-        "EPSILON": 0,  # The initial exploration rate for the epsilon greedy algo
+        "EPSILON": 0.1,  # The initial exploration rate for the epsilon greedy algo
         "EPSILON_MIN": 0.001,  # Minimum exploration rate
         "EPSILON_DECAY": 0.999,
         # If EPSILON_DECAY_STRATEGY == Linear, it determines either the amount of episodes until `EPSILON_MIN`. If EPSILON_DECAY_STRATEGY == EXPONENTIAL, it determines the rate of decay per episode. (if EXPONENTIAL: =1 in this case means no decay)
@@ -151,7 +150,10 @@ SETTINGS = {
             "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
         "POLICY_DELAY": 2,  # The delay of the policy optimization
-        "NOISE_CLIP": 1,  # The gaussian noise clip value
+        "NOISE_CLIP": 0.1,  # The gaussian noise clip value
+        "HIDDEN_DIM": 256, 
+        "NUM_LAYERS": 5, #num hidden layers, only changed if target_net == false
+        "BATCHNORM_MOMENTUM": 0.9, #momentum for batchnorm, only used if target_net == false
         "NOISE": _DEFAULT_NOISE
     },
     "SAC": {

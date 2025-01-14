@@ -303,7 +303,7 @@ class MPOAgent(Agent):
                     # Sample action from the multivariate Gaussian
                     proposed_action = π.sample()
                     #Add some noise
-                    noise = torch.randn_like(proposed_action) 
+                    #noise = torch.randn_like(proposed_action) * self.epsilon
                     # Ensure actions are within the valid range
                     action = torch.clamp(proposed_action, self.action_low, self.action_high)
                     action = proposed_action.numpy()[0]
@@ -409,7 +409,6 @@ class MPOAgent(Agent):
         def bt(m):
             return m.transpose(dim0=-2, dim1=-1)
 
-
         def btr(m):
             return m.diagonal(dim1=-2, dim2=-1).sum(-1)
         
@@ -510,6 +509,7 @@ class MPOAgent(Agent):
             
             # Sample from replay buffer, dimensions (K, ds), (K, da), (K,), (K, ds) 
             states, actions, rewards, next_states, dones, _ = memory.sample(batch_size=self.batch_size, randomly=True)
+            print(states.shape)
             # 1: Policy Evaluation: Update Critic (Q-function)
             loss_critic, q_estimates = self.critic_update(states, actions, dones, next_states, rewards, N)
             # Backward pass in the critic network

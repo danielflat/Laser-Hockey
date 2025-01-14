@@ -8,51 +8,70 @@ from torch import device, nn
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util.directoryutil import get_path
+from src.util.noiseutil import initNoise
 
 """
 Author: Andre Pfrommer
-
-TODOS:
-- ADD OU NOISE/WHITE NOISE/PINK NOISE
-- ADD BATCH NORMALIZATION
 """
-    
+
 ####################################################################################################
 # Critic and Actor Networks
 ####################################################################################################
 
 class Critic(nn.Module):
-    def __init__(self, state_size: int, hidden_sizes: List[int], action_size: int):
+    def __init__(self, state_size: int, hidden_size: int, action_size: int, num_layers: int,
+                 cross_q: bool, bn_momentum: float=0.9):
         super().__init__()
-
-        self.network = nn.Sequential(
-            nn.Linear(state_size + action_size, hidden_sizes[0]),
-            nn.ReLU(),
-            nn.Linear(hidden_sizes[0], hidden_sizes[1]),
-            nn.ReLU(),
-            nn.Linear(hidden_sizes[1], 1)
-        )
-
-        self.loss = torch.nn.SmoothL1Loss()
+        
+        #If cross_q method, we use 1D Batchnorm after every Linear layer
+        if cross_q:
+            layers = []
+            
+            layers.append(nn.BatchNorm1d(state_size + action_size, momentum=bn_momentum)) 
+            layers.append(nn.Linear(state_size + action_size, hidden_size))  
+            layers.append(nn.ReLU()) 
+            
+            #We can add more hidden layers as we do batchnorm now
+            for _ in range(num_layers - 1):  
+                layers.append(nn.BatchNorm1d(hidden_size, momentum=bn_momentum)) 
+                layers.append(nn.Linear(hidden_size, hidden_size))  
+                layers.append(nn.ReLU())  
+                
+            #Output layer
+            layers.append(nn.Linear(hidden_size, 1))
+            
+            self.network = nn.Sequential(*layers)
+            
+        #Otherwise, the standard 2 layer Q network
+        else:
+            self.network = nn.Sequential(
+                nn.Linear(state_size + action_size, hidden_size),
+                nn.ReLU(),
+                nn.Linear(hidden_size, hidden_size),
+                nn.ReLU(),
+                nn.Linear(hidden_size, 1)
+            )
 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         """
         Calculates the Q value for the given state and action
         """
         # Action and State concatenated as input into the q network
-        concat_input = torch.cat((state, action), dim = 1)
+        state = state.float()
+        action = action.float()
+        concat_input = torch.hstack((state, action))
         return self.network(concat_input)
 
 class Actor(nn.Module):
-    def __init__(self, state_size: int, hidden_sizes: List[int], action_size: int):
+    def __init__(self, state_size: int, hidden_size: int, action_size: int):
         super().__init__()
 
         self.network = nn.Sequential(
-            nn.Linear(state_size, hidden_sizes[0]),
+            nn.Linear(state_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_sizes[0], hidden_sizes[1]),
+            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_sizes[1], action_size),
+            nn.Linear(hidden_size, action_size),
             nn.Tanh()
         )
 
@@ -84,27 +103,47 @@ class TD3Agent(Agent):
 
         self.policy_delay = td3_settings["POLICY_DELAY"]
         self.noise_clip = td3_settings["NOISE_CLIP"]
+        self.hidden_size = td3_settings["HIDDEN_DIM"]
+        self.num_layers = td3_settings["NUM_LAYERS"]
+        self.bn_momentum = td3_settings["BATCHNORM_MOMENTUM"]
+        #Whether or not to use Batchnorm
+        self.cross_q = True
+        if self.use_target_net:
+            self.cross_q = False
+        
+        self.noise = initNoise(action_shape = (action_size,), noise_settings = td3_settings["NOISE"],
+                               device = self.device)
 
         # Here we have 2 Q Networks
         self.Critic1 = Critic(state_size=state_size,
-                            hidden_sizes=[128, 128],
-                            action_size=action_size).to(device)
+                            hidden_size=self.hidden_size,
+                            action_size=action_size,
+                            num_layers=self.num_layers,
+                            cross_q=self.cross_q,
+                            bn_momentum=self.bn_momentum).to(device)
         self.Critic2 = Critic(state_size=state_size,
-                            hidden_sizes=[128, 128],
-                            action_size=action_size).to(device)
+                            hidden_size=self.hidden_size,
+                            action_size=action_size,
+                            num_layers=self.num_layers,
+                            cross_q=self.cross_q,
+                            bn_momentum=self.bn_momentum).to(device)
         self.Actor = Actor(state_size=state_size,
-                                    hidden_sizes=[128, 128],
-                                    action_size=action_size).to(device)
+                        hidden_size=self.hidden_size,
+                        action_size=action_size).to(device)
         if self.use_target_net:
             self.Critic1_target = Critic(state_size=state_size,
-                                        hidden_sizes=[128, 128],
-                                        action_size=action_size).to(device)
+                                        hidden_size=self.hidden_size,
+                                        action_size=action_size,
+                                        num_layers=self.num_layers,
+                                        cross_q=self.cross_q).to(device)
             self.Critic2_target = Critic(state_size=state_size,
-                                        hidden_sizes=[128, 128],
-                                        action_size=action_size).to(device)
+                                        hidden_size=self.hidden_size,
+                                        action_size=action_size,
+                                        num_layers=self.num_layers,
+                                        cross_q=self.cross_q).to(device)
             self.Actor_target = Actor(state_size=state_size,
-                                                hidden_sizes=[128, 128],
-                                                action_size=action_size).to(device)
+                                    hidden_size=self.hidden_size,
+                                    action_size=action_size).to(device)
             # Set the target nets in eval
             self.Critic1_target.eval()
             self.Critic2_target.eval()
@@ -129,17 +168,19 @@ class TD3Agent(Agent):
         In Training mode, we sample an action using actor network and exploration noise
         :param state: The state
         """
+        
         if self.isEval:
             self.epsilon = 0
         
         with torch.no_grad():
             #Exploration noise
             noise = torch.clamp(
-                torch.randn(self.action_space.shape[0], device=self.device) * self.epsilon,
-                min=-self.noise_clip,
-                max=self.noise_clip)
+                torch.from_numpy(self.noise.sample() * self.epsilon),
+                min = -self.noise_clip,
+                max = self.noise_clip)
             
             #Forward pass for the Actor network and rescaling
+            self.Actor.eval() #eval mode for batchnorm to compute running statistics
             det_action = self.Actor.forward(state) * self.action_scale + self.action_bias
             action = det_action 
             action = torch.clamp(
@@ -147,7 +188,7 @@ class TD3Agent(Agent):
                 min=self.action_low, #Minimum action value
                 max=self.action_high) #Maximum action value
             
-        action = action.cpu().numpy()
+        action = action.numpy()
         return action
 
     def critic_forward(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, done: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
@@ -157,47 +198,67 @@ class TD3Agent(Agent):
         2. Calculate the Q values for the next state and next action using both target Q networks
         3. Calculate the TD Target by bootstrapping the minimum of the two Q networks
         4. Calculate the loss for both Q networks using the TD Target
+        
+        If cross_q is True, we use joint forward pass to use batchnorm on the critic network
         """
 
-        with torch.no_grad():
-            # Exploration noise
-            noise = torch.clamp(
-                torch.randn(self.action_space.shape[0], device = self.device) * self.epsilon,
-                min = -self.noise_clip,
-                max = self.noise_clip)
+        # Exploration noise
+        noise = torch.clamp(
+            torch.from_numpy(self.noise.sample() * self.epsilon),
+            min = -self.noise_clip,
+            max = self.noise_clip)
+        
+        if self.cross_q:
+            # 1. Next action via the Actor network
+            next_action = self.Actor.forward(next_state) * self.action_scale + self.action_bias
+            next_action = torch.clamp(
+                next_action + noise,
+                min = self.action_low,  # Minimum action value
+                max = self.action_high)  # Maximum action value
+            
+            #Joint forward pass for Q networks
+            cat_states = torch.cat([state, next_state], 0) # (batch_size x 2, state_size)
+            cat_actions = torch.cat([action, next_action], 0) # (batch_size x 2, action_size)
 
-            if self.use_target_net:
-                # 1. Next action via the target Actor network
-                next_action = self.Actor_target.forward(next_state) * self.action_scale + self.action_bias
-                next_action = torch.clamp(
-                    next_action + noise,
-                    min = self.action_low,  # Minimum action value
-                    max = self.action_high)  # Maximum action value
-
-                # 2. Forward pass for both Q networks
-                q_prime1 = self.Critic1_target.forward(next_state, next_action)
-                q_prime2 = self.Critic2_target.forward(next_state, next_action)
-
-            else:
-                #1. Next action via the target Actor network
-                next_action = self.Actor.forward(next_state) * self.action_scale + self.action_bias
-                next_action = torch.clamp(
-                    next_action + noise,
-                    min=self.action_low, #Minimum action value
-                    max=self.action_high) #Maximum action value
-
-                #2. Forward pass for both Q networks
-                q_prime1 = self.Critic1.forward(next_state, next_action)
-                q_prime2 = self.Critic2.forward(next_state, next_action)
-                
+            #2. Forward pass for Q networks
+            self.Critic1.train() # switch to training - to update BN statistics if any
+            self.Critic2.train()
+            q_full1 = self.Critic1(cat_states, cat_actions) # (batch_size x 2, 1)
+            q_full2 = self.Critic2(cat_states, cat_actions) # (batch_size x 2, 1)
+            self.Critic1.eval() # switch back to eval mode
+            self.Critic2.eval()
+            
+            # Separating Q outputs
+            q1, q_prime1 = torch.chunk(q_full1, chunks=2, dim=0)
+            q2, q_prime2 = torch.chunk(q_full2, chunks=2, dim=0)
+            
             #3. Bootstrapping the minimum of the two Q networks
-            td_target = reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2)
+            td_target = (reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2)).detach()
+                
+            #4. Logging the Q values for the next state and next action
+            Critic1_loss = self.criterion(q1, td_target)
+            Critic2_loss = self.criterion(q2, td_target)
+            Critic_loss = Critic1_loss + Critic2_loss
+        
+        else:
+            # 1. Next action via the target Actor network
+            next_action = self.Actor_target.forward(next_state) * self.action_scale + self.action_bias
+            next_action = torch.clamp(
+                next_action + noise,
+                min = self.action_low,  # Minimum action value
+                max = self.action_high)  # Maximum action value
+
+            # 2. Forward pass for both Q networks
+            q_prime1 = self.Critic1_target.forward(next_state, next_action)
+            q_prime2 = self.Critic2_target.forward(next_state, next_action)
             
-        #4. Logging the Q values for the next state and next action
-        Critic1_loss = self.criterion(self.Critic1.forward(state, action), td_target)
-        Critic2_loss = self.criterion(self.Critic2.forward(state, action), td_target)
-        Critic_loss = Critic1_loss + Critic2_loss
-            
+            #3. Bootstrapping the minimum of the two Q networks
+            td_target = reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2).detach()
+                
+            #4. Logging the Q values for the next state and next action
+            Critic1_loss = self.criterion(self.Critic1.forward(state, action), td_target)
+            Critic2_loss = self.criterion(self.Critic2.forward(state, action), td_target)
+            Critic_loss = Critic1_loss + Critic2_loss
         return Critic_loss
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
@@ -211,10 +272,6 @@ class TD3Agent(Agent):
         for i in range(1, self.opt_iter + 1):
             #Sample from the replay memory
             state, action, reward, next_state, done, info = memory.sample(self.batch_size, randomly=True)
-            state = state.float()
-            action = action.float()
-            reward = reward.float()
-            next_state = next_state.float()
             #Forward pass for Q networks
             if self.USE_BF_16:
                 with torch.autocast(device_type = self.device.type, dtype = torch.bfloat16):
