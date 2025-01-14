@@ -32,3 +32,4 @@
 
 - [ ] Add Winning, Draw and Lose rates for each agent and in the end (training and testing)
 - [ ] fremde Algroithmen testen zum Debuggen
+- [ ] Add checkpointing start for the agents

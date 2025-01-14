@@ -14,7 +14,7 @@ from src.settings import AGENT_SETTINGS, DDPG_SETTINGS, DQN_SETTINGS, MAIN_SETTI
     TD3_SETTINGS
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
     TD3_ALGO, \
-    WEAK_COMP_ALGO
+    TDMPC2_ALGO, WEAK_COMP_ALGO
 from src.util.contract import initAgent, initEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics
 
@@ -74,10 +74,10 @@ def evaluate_main_agent(main_agent, opponent, env, num_episodes = 10):
 
 
 def do_other_env_training(env, agent, memory):
-    episode_durations = []
-    episode_rewards = []
-    episode_losses = []
-    episode_epsilon = []
+    episodes_durations = []
+    episodes_rewards = []
+    episodes_losses = []
+    episodes_epsilon = []
 
     state, info = env.reset(seed = SEED)
 
@@ -113,11 +113,11 @@ def do_other_env_training(env, agent, memory):
             state = next_state
             if done:
                 # If this transition is the last, safe the number of done steps in the env. and end this episode
-                episode_durations.append(step)
+                episodes_durations.append(step)
                 break
 
         # after each episode, we want to log some statistics
-        episode_rewards.append(total_reward)
+        episodes_rewards.append(total_reward)
 
         # After some episodes and collecting some data, we optimize the agent
         if i_training % EPISODE_UPDATE_ITER == 0:
@@ -126,16 +126,16 @@ def do_other_env_training(env, agent, memory):
             # After optimization, we can log some *more* statistics
             t_end = time.time()
             episode_time = t_end - t_start
-            episode_losses.append(losses)
-            episode_epsilon.append(agent.epsilon)
+            episodes_losses.append(losses)
+            episodes_epsilon.append(agent.epsilon)
             logging.info(
-                f"Training Iter: {i_training} | Req. Steps: {episode_durations[i_training - 1]} | Total reward: {total_reward:.4f} |"
+                f"Training Iter: {i_training} | Req. Steps: {episodes_durations[i_training - 1]} | Total reward: {total_reward:.4f} |"
                 f" Avg. Loss: {np.array(losses).mean():.4f} | Epsilon: {agent.epsilon:.4f} | Req. Time: {episode_time:.4f} sec.")
 
         # Plot every 100 episodes
         if SHOW_PLOTS and i_training % 100 == 0:
-            plot_training_metrics(episode_durations = episode_durations, episode_rewards = episode_rewards,
-                                  episode_losses = episode_losses, current_episode = i_training,
+            plot_training_metrics(episode_durations = episodes_durations, episode_rewards = episodes_rewards,
+                                  episode_losses = episodes_losses, current_episode = i_training,
                                   episode_update_iter = EPISODE_UPDATE_ITER)
 
         # after some time, we save a checkpoint of our model
@@ -184,6 +184,100 @@ def do_other_env_testing(env, agent):
         state, info = env.reset()
 
     return test_durations, test_rewards
+
+
+def do_tdmpc2agent_other_env_training(env, agent, memory):
+    episodes_durations = []
+    episodes_rewards = []
+    episodes_losses = []
+    episodes_epsilon = []
+
+    state, info = env.reset(seed = SEED)
+
+    for i_training in range(1, NUM_TRAINING_EPISODES + 1):
+        # We track for each episode how high the reward was
+        t_start = time.time()
+        total_reward = 0
+        all_states = []
+        all_actions = []
+        all_rewards = []
+        all_next_states = []
+        all_dones = []
+        all_infos = []
+
+        # Convert state to torch
+        state = torch.from_numpy(state).to(DEVICE).to(dtype = torch.float32)
+
+        for step in count(start = 1):
+            # choose the action
+            action = agent.act(state)
+
+            # perform the action
+            next_state, reward, terminated, truncated, info = env.step(action)
+
+            # track the total reward
+            total_reward += reward
+
+            # Convert quantities into tensors
+            action = torch.tensor(action, device = DEVICE, dtype = torch.float32)
+            reward = torch.tensor(reward, device = DEVICE, dtype = torch.float32)
+            done = torch.tensor(terminated or truncated, device = DEVICE,
+                                dtype = torch.int)  # to be able to do arithmetics with the done signal, we need an int
+            next_state = torch.from_numpy(next_state).to(device = DEVICE)
+
+            # Store this transition in the memory
+            # memory.push(state, action, reward, next_state, done, info)
+            all_states.append(state)
+            all_actions.append(action)
+            all_rewards.append(reward)
+            all_dones.append(done)
+            all_next_states.append(next_state)
+            all_infos.append(info)
+
+            # Update the state
+            state = next_state
+            if done:
+                # If this transition is the last, safe the number of done steps in the env. and end this episode
+                episodes_durations.append(step)
+                break
+
+        all_states = torch.stack(all_states, dim = 0)
+        all_actions = torch.stack(all_actions, dim = 0)
+        all_rewards = torch.stack(all_rewards, dim = 0)
+        all_dones = torch.stack(all_dones, dim = 0)
+        all_next_states = torch.stack(all_next_states, dim = 0)
+
+        memory.push(all_states, all_actions, all_rewards, all_next_states, all_dones, all_infos)
+
+        # after each episode, we want to log some statistics
+        episodes_rewards.append(total_reward)
+
+        # After some episodes and collecting some data, we optimize the agent
+        if i_training % EPISODE_UPDATE_ITER == 0:
+            losses = agent.optimize(memory = memory, episode_i = i_training)
+
+            # After optimization, we can log some *more* statistics
+            t_end = time.time()
+            episode_time = t_end - t_start
+            episodes_losses.append(losses)
+            episodes_epsilon.append(agent.epsilon)
+            logging.info(
+                f"Training Iter: {i_training} | Req. Steps: {episodes_durations[i_training - 1]} | Total reward: {total_reward:.4f} |"
+                f" Avg. Loss: {np.array(losses).mean():.4f} | Epsilon: {agent.epsilon:.4f} | Req. Time: {episode_time:.4f} sec.")
+
+        # Plot every 100 episodes
+        if SHOW_PLOTS and i_training % 100 == 0:
+            plot_training_metrics(episode_durations = episodes_durations, episode_rewards = episodes_rewards,
+                                  episode_losses = episodes_losses, current_episode = i_training,
+                                  episode_update_iter = EPISODE_UPDATE_ITER)
+
+        # after some time, we save a checkpoint of our model
+        if (i_training % CHECKPOINT_ITER == 0):
+            agent.saveModel(MODEL_NAME, i_training)
+
+        # reset the environment
+        state, info = env.reset(
+            seed = SEED + i_training)  # by resetting always a different but predetermined seed, we ensure the reproducibility of the results
 
 
 def do_hockey_training(env, agent, memory, opponent_pool: dict):
@@ -449,7 +543,10 @@ def main():
 
     # If you use another env with a single player, train normally
     else:
-        do_other_env_training(env = env, agent = agent, memory = memory)
+        if USE_ALGO == TDMPC2_ALGO:
+            do_tdmpc2agent_other_env_training(env = env, agent = agent, memory = memory)
+        else:
+            do_other_env_training(env = env, agent = agent, memory = memory)
 
     # Testing loop
     logging.info("Training is done! Now we will do some testing!")

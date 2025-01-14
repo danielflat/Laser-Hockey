@@ -10,6 +10,7 @@ from torch.nn import functional as F
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util import mathutil
+from src.util.noiseutil import initNoise
 
 """
 Our implementation of TD-MPC2
@@ -151,9 +152,9 @@ class TDMPC2Agent(Agent, nn.Module):
         self.max_action = action_space.high[:self.action_size]
         self.max_action_torch = torch.tensor(self.max_action, device = self.device)
 
-        # self.noise = initNoise(action_shape = (self.action_size,), noise_settings = td_mpc2_settings["NOISE"],
-        #                        device = self.device)
-        # self.noise_factor = td_mpc2_settings["NOISE"]["NOISE_FACTOR"]
+        self.noise = initNoise(action_shape = (self.action_size,), noise_settings = td_mpc2_settings["NOISE"],
+                               device = self.device)
+        self.noise_factor = td_mpc2_settings["NOISE"]["NOISE_FACTOR"]
 
         self.horizon = td_mpc2_settings["HORIZON"]
         self.mmpi_iterations = td_mpc2_settings["MMPI_ITERATIONS"]
@@ -220,43 +221,35 @@ class TDMPC2Agent(Agent, nn.Module):
         During training, we add noise to the proposed action.
         """
         proposed_action = self._plan(state)
-        # if not self.isEval:
-        #     noise = self.noise.sample() * self.noise_factor
-        #     proposed_action += noise
-        #     proposed_action = np.clip(proposed_action, self.min_action, self.max_action)
+        if not self.isEval:
+            noise = self.noise_factor * self.noise.sample()
+            proposed_action += noise
+            proposed_action = np.clip(proposed_action, self.min_action, self.max_action)
 
         return proposed_action
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         losses = []
 
-        # Step 01: We take the whole sequence from the batch
-        state, action, reward, next_state, done, _ = memory.sample(batch_size = self.batch_size, randomly = False)
-
         for i in range(1, self.opt_iter + 1):
-            # Step 02: We randomly subsample a horizon-long trajectory for updating
-            starting_point = torch.randint(0, state.shape[0] - self.horizon, (1,), device = self.device)
-            state = state[starting_point:starting_point + self.horizon + 1]
-            action = action[starting_point:starting_point + self.horizon + 1]
-            reward = reward[starting_point:starting_point + self.horizon + 1]
-            next_state = next_state[starting_point:starting_point + self.horizon + 1]
-            done = done[starting_point:starting_point + self.horizon + 1]
+            # Step 01: We randomly subsample a horizon-long trajectory for updating
+            state, action, reward, next_state, done, _ = memory.sample_horizon(horizon = self.horizon)
 
-            # Step 03: Update the agent.
+            # Step 02: Update the agent.
             loss = self._update(state, action, reward, next_state, done)
 
-            # Step 04: Keep track of the loss
+            # Step 03: Keep track of the loss
             losses.append(loss)
 
-            # Step 05: After some time, update the agent
-            if episode_i % self.target_net_update_freq == 0:
+            # Step 04: After some time, update the agent
+            if i % self.target_net_update_freq == 0:
                 self.updateTargetNet(soft_update = self.use_soft_updates, source = self.q1_net,
                                      target = self.q1_target_net)
                 self.updateTargetNet(soft_update = self.use_soft_updates, source = self.q2_net,
                                      target = self.q2_target_net)
 
         # at the end, we have to clear the memory again
-        memory.clear()
+        # memory.clear()
 
         return losses
 
