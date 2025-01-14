@@ -27,6 +27,7 @@ class Agent(ABC):
         self.batch_size = agent_settings["BATCH_SIZE"]
         self.discount = agent_settings["DISCOUNT"]
         self.gradient_clipping_value = agent_settings["GRADIENT_CLIPPING_VALUE"]
+        self.norm_clipping_value = agent_settings["NORM_CLIPPING_VALUE"]
         self.target_net_update_freq = agent_settings["TARGET_NET_UPDATE_FREQ"]
         self.tau = agent_settings["TAU"]
 
@@ -35,6 +36,7 @@ class Agent(ABC):
         self.use_target_net = agent_settings["USE_TARGET_NET"]
         self.use_soft_updates = agent_settings["USE_SOFT_UPDATES"]
         self.use_gradient_clipping = agent_settings["USE_GRADIENT_CLIPPING"]
+        self.use_norm_clipping = agent_settings["USE_NORM_CLIPPING"]
         self.epsilon_decay_strategy = agent_settings["EPSILON_DECAY_STRATEGY"]
         self.device: device = device
         self.use_clip_foreach = agent_settings["USE_CLIP_FOREACH"]
