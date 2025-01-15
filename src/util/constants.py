@@ -9,6 +9,7 @@ HOCKEY = "Hockey-v0"
 PENDULUM = "Pendulum-v1"
 CARTPOLE = "CartPole-v1"
 LUNARLANDER = "LunarLander-v3"
+HALFCHEETAH = "HalfCheetah-v5"
 
 # All Algos
 DQN_ALGO = "DQN_Algo"
@@ -48,7 +49,8 @@ SUPPORTED_ENVIRONMENTS = {
     HOCKEY,
     PENDULUM,
     CARTPOLE,
-    LUNARLANDER
+    LUNARLANDER,
+    HALFCHEETAH
 }
 SUPPORTED_ALGORITHMS = {
     DQN_ALGO,

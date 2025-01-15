@@ -37,7 +37,7 @@ SETTINGS = {
         "SEED": 24,  # The seed that we want to use
         "DEVICE": torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # On which machine is it running?
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
-        "USE_ENV": PENDULUM,  # The used environment
+        "USE_ENV": HOCKEY,  # The used environment
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
@@ -51,7 +51,7 @@ SETTINGS = {
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
         "SHOW_PLOTS": True,  # If you want to plot statistics after each episode
-        "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
+        "CHECKPOINT_ITER": 50,  # saves a checkpoint of this model after x iterations
 
     },
     # The settings for the agent.py
@@ -68,12 +68,12 @@ SETTINGS = {
         "USE_SOFT_UPDATES": True,  # If the target network is updated. True = softly, False = hardly
         "TARGET_NET_UPDATE_FREQ": 1,
         # int: Gives the frequency when to update the target net. If target net is disabled, this param is not relevant. If == 1, you update at every step.
-        "TAU": 0.001,  # Soft update parameter
+        "TAU": 0.1,  # Soft update parameter
 
         # EPSILON GREEDY STRATEGY
         "EPSILON_DECAY_STRATEGY": EXPONENTIAL,
         # What kind of strategy should be picked in order to decay epsilon during training
-        "EPSILON": 0.1,  # The initial exploration rate for the epsilon greedy algo
+        "EPSILON": 0,  # The initial exploration rate for the epsilon greedy algo
         "EPSILON_MIN": 0.001,  # Minimum exploration rate
         "EPSILON_DECAY": 0.999,
         # If EPSILON_DECAY_STRATEGY == Linear, it determines either the amount of episodes until `EPSILON_MIN`. If EPSILON_DECAY_STRATEGY == EXPONENTIAL, it determines the rate of decay per episode. (if EXPONENTIAL: =1 in this case means no decay)
@@ -173,23 +173,33 @@ SETTINGS = {
                 "LEARNING_RATE": 3e-4,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
-                "WEIGHT_DECAY": 0,  # The weight decay rate
+                "WEIGHT_DECAY": 1e-5,  # The weight decay rate
                 "USE_FUSION": torch.cuda.is_available()
             },
         },
         # Specific settings for the critic network
         "CRITIC": {
             "OPTIMIZER": {
-                "OPTIM_NAME": ADAM,  # Which optimizer to use
-                "LEARNING_RATE": 3e-4,  # The learning rate for the agent
-                "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
+                "OPTIM_NAME": ADAM,  
+                "LEARNING_RATE": 3e-4,  
+                "BETAS": (0.9, 0.999), 
                 "EPS": 1e-8,  # eps Adam param
-                "WEIGHT_DECAY": 0,  # The weight decay rate
+                "WEIGHT_DECAY": 1e-5,  # The weight decay rate
                 "USE_FUSION": torch.cuda.is_available()
             },
             "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
-        "SAMPLE_ACTION_NUM": 64,  # Number of actions to sample for nonparametric policy optimization
+        "LANGRAGIANS": {
+            "OPTIMIZER": {
+                "OPTIM_NAME": ADAM,  
+                "LEARNING_RATE": 0.1,
+                "BETAS": (0.9, 0.999),
+                "EPS": 1e-8,
+                "WEIGHT_DECAY": 1e-4,
+                "USE_FUSION": torch.cuda.is_available()
+            },
+        },
+        "SAMPLE_ACTION_NUM": 32,  # Number of actions to sample for nonparametric policy optimization
         "MSTEP_ITER": 1,
         "DISCRETE": False
         # All other Hyperparameters are set in the MPO class
