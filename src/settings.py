@@ -6,7 +6,7 @@ from time import localtime, strftime
 import torch
 
 from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
-    SMOOTH_L1_LOSS, TDMPC2_ALGO
+    SMOOTH_L1_LOSS, TDMPC2_ALGO, HOCKEY, MPO_ALGO
 
 _DEFAULT_OPTIMIZER = {
     "OPTIM_NAME": ADAM,  # Which optimizer to use
@@ -42,7 +42,7 @@ SETTINGS = {
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
         "SELF_PLAY": False,  # If the agent should play against itself like in AlphaGo
-        "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
+        "USE_ALGO": MPO_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
         "BUFFER_SIZE": 1_000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
@@ -189,7 +189,7 @@ SETTINGS = {
             },
             "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
-        "LANGRAGIANS": {
+        "LAGRANGIANS": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,  
                 "LEARNING_RATE": 0.1,

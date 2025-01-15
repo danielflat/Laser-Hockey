@@ -265,9 +265,9 @@ class MPOAgent(Agent):
                                            parameters = self.actor.parameters())
         self.critic_optimizer = self.initOptim(optim = mpo_settings["CRITIC"]["OPTIMIZER"],
                                            parameters = self.critic.parameters())
-        self.langragian_optimizer_cont = self.initOptim(optim = mpo_settings["LANGRAGIANS"]["OPTIMIZER"],
+        self.lagrangian_optimizer_cont = self.initOptim(optim = mpo_settings["LAGRANGIANS"]["OPTIMIZER"],
                                              parameters = [self.η_μ_kl, self.η_Σ_kl])
-        self.langragian_optimizer_disc = self.initOptim(optim = mpo_settings["LANGRAGIANS"]["OPTIMIZER"],
+        self.lagrangian_optimizer_disc = self.initOptim(optim = mpo_settings["LAGRANGIANS"]["OPTIMIZER"],
                                                 parameters = [self.η_kl])
 
         #Define Loss function
@@ -557,10 +557,10 @@ class MPOAgent(Agent):
                     kl_μ, kl_Σ, Σi_det, Σ_det = self.gaussian_kl(μi=b_μ, μ=μ, Ai=b_A, A=A)
                     
                     # Update lagrangian multipliers α by gradient descent
-                    langragian_loss = self.η_μ_kl * (self.ε_kl_μ - kl_μ) + self.η_Σ_kl * (self.ε_kl_Σ - kl_Σ)
-                    self.langragian_optimizer_cont.zero_grad()
-                    langragian_loss.backward(retain_graph=True)
-                    self.langragian_optimizer_cont.step()
+                    lagrangian_loss = self.η_μ_kl * (self.ε_kl_μ - kl_μ) + self.η_Σ_kl * (self.ε_kl_Σ - kl_Σ)
+                    self.lagrangian_optimizer_cont.zero_grad()
+                    lagrangian_loss.backward(retain_graph=True)
+                    self.lagrangian_optimizer_cont.step()
                     
                     η_μ_kl_np = self.η_μ_kl.detach().item()
                     η_Σ_kl_np = self.η_Σ_kl.detach().item()
@@ -598,10 +598,10 @@ class MPOAgent(Agent):
                     
                     #Inner optimization loop
                     #self.η_kl -= self.α_scale * (self.ε_kl - kl).item()
-                    langragian_loss = self.η_kl * (self.ε_kl - kl)
-                    self.langragian_optimizer_disc.zero_grad()
+                    lagrangian_loss = self.η_kl * (self.ε_kl - kl)
+                    self.lagrangian_optimizer_disc.zero_grad()
                     langragian_loss.backward(retain_graph=True)
-                    self.langragian_optimizer_disc.step()
+                    self.lagrangian_optimizer_disc.step()
                     η_kl_np = self.η_kl.detach().item()
                     
                     #Clipping
