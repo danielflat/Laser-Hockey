@@ -8,7 +8,7 @@ from itertools import count
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
-from src.settings import MAIN_SETTINGS, SETTINGS
+from src.settings import MAIN_SETTINGS, AGENT_SETTINGS, SETTINGS
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
     TD3_ALGO, \
     TDMPC2_ALGO, WEAK_COMP_ALGO
@@ -42,7 +42,7 @@ NUM_TEST_EPISODES = MAIN_SETTINGS["NUM_TEST_EPISODES"]
 EPISODE_UPDATE_ITER = MAIN_SETTINGS["EPISODE_UPDATE_ITER"]
 SHOW_PLOTS = MAIN_SETTINGS["SHOW_PLOTS"]
 CHECKPOINT_ITER = MAIN_SETTINGS["CHECKPOINT_ITER"]
-
+BATCH_SIZE = AGENT_SETTINGS["BATCH_SIZE"]
 
 #
 # def evaluate_main_agent(main_agent, opponent, env, num_episodes = 10):
@@ -712,7 +712,7 @@ def main():
     env = initEnv(USE_ENV, RENDER_MODE, NUMBER_DISCRETE_ACTIONS)
 
     # Choose which algorithm to pick to initialize the agent
-    agent = initAgent(USE_ALGO, env = env, device = DEVICE)
+    agent = initAgent(USE_ALGO, env = env, device = DEVICE, agent_settings=AGENT_SETTINGS)
 
     # Init the memory
     memory = ReplayMemory(capacity = BUFFER_SIZE, device = DEVICE)
