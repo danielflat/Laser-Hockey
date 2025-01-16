@@ -6,7 +6,7 @@ import torch
 from sympy import false
 from torch import nn
 from torch.nn import functional as F
-from typing import Any
+from typing import Any, Dict
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
@@ -281,7 +281,7 @@ class TDMPC2Agent(Agent, nn.Module):
 
         return proposed_action
 
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> dict[str, Any]:
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> Dict[str, Any]:
         statistics_episode = []
 
         for i in range(1, self.opt_iter + 1):
@@ -395,7 +395,7 @@ class TDMPC2Agent(Agent, nn.Module):
         return normalized_action.cpu().numpy()
 
     def _update(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,
-                done: torch.Tensor) -> dict[str, int | float | bool | Any]:
+                done: torch.Tensor) -> Dict[str, int | float | bool | Any]:
         # Step 01: Compute targets
         with torch.no_grad():
             next_latent_state = self.encoder_net(next_state)
