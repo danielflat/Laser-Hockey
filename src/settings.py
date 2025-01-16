@@ -5,7 +5,7 @@ import torch
 from time import localtime, strftime
 
 from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
-    SMOOTH_L1_LOSS, TDMPC2_ALGO
+    SMOOTH_L1_LOSS, TDMPC2_ALGO, HOCKEY, MPO_ALGO
 
 _DEFAULT_OPTIMIZER = {
     "OPTIM_NAME": ADAM,  # Which optimizer to use
@@ -46,12 +46,12 @@ SETTINGS = {
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
         "NUM_TRAINING_EPISODES": 10_000,  # How many training episodes should be run?
-        "NUM_TEST_EPISODES": 3,  # How many test episodes should be run?
+        "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
         "SHOW_PLOTS": False,  # If you want to plot statistics after each episode
         "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
-
+        "CURIOSITY": None,  #Proportion of curiosity reward calculated by ICM to be added to the real reward. If None no curiosity exploration is used
     },
     # The settings for the agent.py
     "AGENT": {
@@ -131,7 +131,7 @@ SETTINGS = {
         "ACTOR": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,
-                "LEARNING_RATE": 0.00001,  # The learning rate for the agent
+                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
                 "WEIGHT_DECAY": 1e-2,  # The weight decay rate
@@ -142,7 +142,7 @@ SETTINGS = {
         "CRITIC": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,  # Which optimizer to use
-                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
+                "LEARNING_RATE": 0.001,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
                 "WEIGHT_DECAY": 1e-2,  # The weight decay rate
@@ -152,7 +152,7 @@ SETTINGS = {
         },
         "POLICY_DELAY": 2,  # The delay of the policy optimization
         "NOISE_CLIP": 0.1,  # The gaussian noise clip value
-        "HIDDEN_DIM": 256, 
+        "HIDDEN_DIM": 128,
         "NUM_LAYERS": 5, #num hidden layers, only changed if target_net == false
         "BATCHNORM_MOMENTUM": 0.9, #momentum for batchnorm, only used if target_net == false
         "NOISE": _DEFAULT_NOISE
@@ -172,23 +172,33 @@ SETTINGS = {
                 "LEARNING_RATE": 3e-4,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
-                "WEIGHT_DECAY": 0,  # The weight decay rate
+                "WEIGHT_DECAY": 1e-5,  # The weight decay rate
                 "USE_FUSION": torch.cuda.is_available()
             },
         },
         # Specific settings for the critic network
         "CRITIC": {
             "OPTIMIZER": {
-                "OPTIM_NAME": ADAM,  # Which optimizer to use
-                "LEARNING_RATE": 3e-4,  # The learning rate for the agent
-                "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
+                "OPTIM_NAME": ADAM,
+                "LEARNING_RATE": 3e-4,
+                "BETAS": (0.9, 0.999),
                 "EPS": 1e-8,  # eps Adam param
-                "WEIGHT_DECAY": 0,  # The weight decay rate
+                "WEIGHT_DECAY": 1e-5,  # The weight decay rate
                 "USE_FUSION": torch.cuda.is_available()
             },
             "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
-        "SAMPLE_ACTION_NUM": 64,  # Number of actions to sample for nonparametric policy optimization
+        "LAGRANGIANS": {
+            "OPTIMIZER": {
+                "OPTIM_NAME": ADAM,
+                "LEARNING_RATE": 0.1,
+                "BETAS": (0.9, 0.999),
+                "EPS": 1e-8,
+                "WEIGHT_DECAY": 1e-4,
+                "USE_FUSION": torch.cuda.is_available()
+            },
+        },
+        "SAMPLE_ACTION_NUM": 32,  # Number of actions to sample for nonparametric policy optimization
         "MSTEP_ITER": 1,
         "DISCRETE": False
         # All other Hyperparameters are set in the MPO class
