@@ -51,11 +51,13 @@ class ReplayMemory:
 
         return states, actions, rewards, next_states, dones, infos
 
-    def sample_horizon(self, batch_size: int, horizon: int) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    def sample_horizon(self, batch_size: int, horizon: int = 0) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """
         Samples a trajectory of a random episode from the memory.
         This trajectory starts at a random position in the episode and goes #horizon steps in the future
         returns the tuple of the horizon trajectory.
+
+        CAUTION: if horizon = 0, the output shape of each object is (batch_size, object_size)
         :returns
             e.g. if horizon = 3,
             horizon_states tensor(batch_size, horizon + 1, state_size)
@@ -65,36 +67,35 @@ class ReplayMemory:
             horizon_next_state tensor(batch_size, horizon + 1, state_size)
             horizon_infos list(batch_size, horizon + 1, info_length) -> not available yet
         """
+        assert horizon >= 0, "Horizon must be >= 0!"
 
         # Step 01: We sample a random episode with replacement *for each batch*
         batches = random.choices(self.storage, k = batch_size)
         states, actions, rewards, next_states, dones, infos = zip(*batches)
-        episode_length = len(states)
+        episode_lengths = torch.tensor([tensor.size(0) for tensor in states])
 
-        # Step 02: If the episode is smaller than the required batch size, throw an error
-        # CURRENTLY ONLY A SANITY CHECK!
-        if batch_size > episode_length:
-            raise Exception("Required batch size is larger than the episode length!")
-
-        # Step 03: Convert the tuples to tensors
-        # (batch_size, episode_length, dim of the object)
-        states = torch.stack(states).to(self.device)
-        actions = torch.stack(actions).to(self.device)
-        rewards = torch.stack(rewards).unsqueeze(-1).to(self.device)
-        next_states = torch.stack(next_states).to(self.device)
-        dones = torch.stack(dones).unsqueeze(-1).to(self.device)
-        # infos = list(infos)
 
         # Step 04: We sample a random number to get the start_index of the horizon
-        start_indices = random.randint(0, episode_length - horizon - 1)
+        start_indices = [random.randint(0, episode_length.item() - horizon - 1) for episode_length in episode_lengths]
+        slices = [slice(start_ind, start_ind + horizon + 1) for start_ind in start_indices]
 
         # Step 05: We only want the horizon of the episode
-        horizon_states = states[:, start_indices:start_indices + horizon + 1, :]
-        horizon_actions = actions[:, start_indices:start_indices + horizon + 1, :]
-        horizon_rewards = rewards[:, start_indices:start_indices + horizon + 1, :]
-        horizon_next_states = next_states[:, start_indices:start_indices + horizon + 1, :]
-        horizon_dones = dones[:, start_indices:start_indices + horizon + 1, :]
+        horizon_states = torch.stack([_state[_slice] for _state, _slice in zip(states, slices)])
+        horizon_actions = torch.stack([_action[_slice] for _action, _slice in zip(actions, slices)])
+        horizon_rewards = torch.stack([_reward[_slice] for _reward, _slice in zip(rewards, slices)]).unsqueeze(-1)
+        horizon_next_states = torch.stack([_next_state[_slice] for _next_state, _slice in zip(next_states, slices)])
+        horizon_dones = torch.stack([done[_slice] for done, _slice in zip(dones, slices)]).unsqueeze(-1)
         # horizon_infos = infos[:, start_indices]
+
+        # # Step 06 (Optional): If the horizon = 0, we can get rid of the second dim
+        # # TODO: df: Can be implemented better, but it works for now
+        # if horizon == 0:
+        #     horizon_states = horizon_states.squeeze(1)
+        #     horizon_actions = horizon_actions.squeeze(1)
+        #     horizon_rewards = horizon_rewards.squeeze(1)
+        #     horizon_next_states = horizon_next_states.squeeze(1)
+        #     horizon_dones = horizon_dones.squeeze(1)
+
 
         return horizon_states, horizon_actions, horizon_rewards, horizon_next_states, horizon_dones  # , horizon_infos
 

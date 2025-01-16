@@ -45,11 +45,11 @@ SETTINGS = {
         "BUFFER_SIZE": 1_000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
-        "NUM_TRAINING_EPISODES": 1000,  # How many training episodes should be run?
-        "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
+        "NUM_TRAINING_EPISODES": 10_000,  # How many training episodes should be run?
+        "NUM_TEST_EPISODES": 3,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
-        "SHOW_PLOTS": True,  # If you want to plot statistics after each episode
+        "SHOW_PLOTS": False,  # If you want to plot statistics after each episode
         "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
 
     },
@@ -58,7 +58,7 @@ SETTINGS = {
         # GENERAL SETTINGS
         "USE_BF16": False,  # Uses BF16 in forward pass or not. Makes it faster, but you have lower precision
         "USE_COMPILE": False,  # if torch.compile should be used for the networks
-        "OPT_ITER": 32,  # How many iterations should be done of gradient descent when calling agent.optimize()?
+        "OPT_ITER": 1,  # How many iterations should be done of gradient descent when calling agent.optimize()?
         "BATCH_SIZE": 200,  # The batch size for doing gradient descent
         "DISCOUNT": 0.95,  # The discount factor for the TD error
 
@@ -197,7 +197,7 @@ SETTINGS = {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
         "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
         "NOISE": _DEFAULT_NOISE,
-        "HORIZON": 3,
+        "HORIZON": 3,  # How many steps do we want to consider while doing predictions
         "MMPI_ITERATIONS": 6,
         "NUM_TRAJECTORIES": 8,
         "NUM_SAMPLES": 256,
@@ -208,11 +208,13 @@ SETTINGS = {
         "LATENT_SIZE": 512,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
-        "log_std_min": -10,
-        "log_std_min": -10,
-        "log_std_min": -10,
-        "log_std_min": -10,
-        "log_std_min": -10,
+        "ENTROPY_COEF": 1e-4,
+        "ENC_LR_SCALE": 0.3,
+        "GRAD_CLIP_NORM": 20,
+        "LR": 3e-4,
+        "CONSISTENCY_COEF": 20,
+        "REWARD_COEF": 0.1,
+        "Q_COEF": 0.1,
     }
 }
 # Convenient Constants

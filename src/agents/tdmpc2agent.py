@@ -1,11 +1,12 @@
 import gymnasium
 import logging
+import numpy
 import numpy as np
 import torch
 from sympy import false
 from torch import nn
 from torch.nn import functional as F
-from typing import List
+from typing import Any
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
@@ -32,12 +33,12 @@ class SimNorm(nn.Module):
         self.temperature = temperature
 
     def forward(self, x: torch.Tensor, V = 8):
-        shape = x.shape
-        x = x.view(*shape[:-1], -1, V)
-        x = F.softmax(x / self.temperature, dim = -1)
-        return x.view(*shape)
+        # shape = x.shape
+        # x = x.view(*shape[:-1], -1, V)
         # x = F.softmax(x / self.temperature, dim = -1)
-        # return x
+        # return x.view(*shape)
+        x = F.softmax(x / self.temperature, dim = -1)
+        return x
 
 
 class NormedLinear(nn.Module):
@@ -216,14 +217,13 @@ class TDMPC2Agent(Agent, nn.Module):
         self.log_std_min = td_mpc2_settings["LOG_STD_MIN"]
         self.log_std_max = td_mpc2_settings["LOG_STD_MAX"]
         self.log_std_dif = self.log_std_max - self.log_std_min
-        self.entropy_coef = 1e-4
+        self.entropy_coef = td_mpc2_settings["ENTROPY_COEF"]
         # self.rho = 0.5 the _discount parameter in the paper. I don't know why they used 0.5
-        self.enc_lr_scale = 0.3
-        self.grad_clip_norm = 20
-        self.lr = 3e-4
-        self.consistency_coef = 20
-        self.reward_coef = 0.1
-        self.value_coef = 0.1
+        self.enc_lr_scale = td_mpc2_settings["ENC_LR_SCALE"]
+        self.lr = td_mpc2_settings["LR"]
+        self.consistency_coef = td_mpc2_settings["CONSISTENCY_COEF"]
+        self.reward_coef = td_mpc2_settings["REWARD_COEF"]
+        self.q_coef = td_mpc2_settings["Q_COEF"]
 
         self.encoder_net = EncoderNet(state_size = state_size, latent_size = self.latent_size,
                                       temperature = self.temperature).to(self.device)
@@ -243,14 +243,16 @@ class TDMPC2Agent(Agent, nn.Module):
         self.q2_target_net.load_state_dict(self.q2_net.state_dict())
         self.q2_target_net.eval()
 
-        self.optim = torch.optim.Adam([
-            {'params': self.encoder_net.parameters(), 'lr': self.lr * self.enc_lr_scale},
-            {'params': self.dynamics_net.parameters()},
-            {'params': self.reward_net.parameters()},
-            {'params': self.q1_net.parameters()},
-            {'params': self.q2_net.parameters()}], lr = self.lr)
+        self.optim = self.initOptim(optim = td_mpc2_settings["OPTIMIZER"],
+                                    parameters = [
+                                        {'params': self.encoder_net.parameters(), 'lr': self.lr * self.enc_lr_scale},
+                                        {'params': self.dynamics_net.parameters()},
+                                        {'params': self.reward_net.parameters()},
+                                        {'params': self.q1_net.parameters()},
+                                        {'params': self.q2_net.parameters()}])
 
-        self.policy_optim = torch.optim.Adam(self.policy_net.parameters(), lr = self.lr)
+        self.policy_optim = self.initOptim(optim = td_mpc2_settings["OPTIMIZER"],
+                                           parameters = self.policy_net.parameters())
 
         if self.USE_COMPILE:
             logging.info("Start compiling the TD-MPC2 agent.")
@@ -279,8 +281,8 @@ class TDMPC2Agent(Agent, nn.Module):
 
         return proposed_action
 
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
-        losses = []
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> dict[str, Any]:
+        statistics_episode = []
 
         for i in range(1, self.opt_iter + 1):
             # Step 01: We randomly subsample a horizon-long trajectory for updating
@@ -288,10 +290,10 @@ class TDMPC2Agent(Agent, nn.Module):
                                                                             horizon = self.horizon)
 
             # Step 02: Update the agent.
-            loss = self._update(state, action, reward, next_state, done)
+            statistics_iter = self._update(state, action, reward, next_state, done)
 
             # Step 03: Keep track of the loss
-            losses.append(loss)
+            statistics_episode.append(statistics_iter)
 
             # Step 04: After some time, update the agent
             if i % self.target_net_update_freq == 0:
@@ -300,10 +302,21 @@ class TDMPC2Agent(Agent, nn.Module):
                 self.updateTargetNet(soft_update = self.use_soft_updates, source = self.q2_net,
                                      target = self.q2_target_net)
 
-        # at the end, we have to clear the memory again
-        # memory.clear()
+        # We sum up the statistics from each optimization iteration by accumulating statistical quantities
+        # such that we can log it
+        sum_up_statistics_training_iter = {
+            "Avg. Total Loss": numpy.array([episode["total_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Policy Loss": numpy.array([episode["policy_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Consistency Loss": numpy.array(
+                [episode["consistency_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Reward Loss": numpy.array([episode["reward_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Q Loss": numpy.array([episode["q_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Total Grad Norm": numpy.array([episode["total_grad_norm"] for episode in statistics_episode]).mean(),
+            "Avg. Policy Grad Norm": numpy.array(
+                [episode["policy_grad_norm"] for episode in statistics_episode]).mean(),
+        }
 
-        return losses
+        return sum_up_statistics_training_iter
 
     def setMode(self, eval = False) -> None:
         """
@@ -323,10 +336,10 @@ class TDMPC2Agent(Agent, nn.Module):
             self.q2_net.train()
 
     def import_checkpoint(self, checkpoint: dict) -> None:
-        self.encoder_net.critic.load_state_dict(checkpoint["encoder_net"])
-        self.policy_net.actor.load_state_dict(checkpoint["policy_net"])
-        self.dynamics_net.actor.load_state_dict(checkpoint["dynamics_net"])
-        self.reward_net.actor.load_state_dict(checkpoint["reward_net"])
+        self.encoder_net.load_state_dict(checkpoint["encoder_net"])
+        self.policy_net.load_state_dict(checkpoint["policy_net"])
+        self.dynamics_net.load_state_dict(checkpoint["dynamics_net"])
+        self.reward_net.load_state_dict(checkpoint["reward_net"])
         self.q1_net.load_state_dict(checkpoint["q1_net"])
         self.q2_net.load_state_dict(checkpoint["q2_net"])
         self.q1_target_net.load_state_dict(checkpoint["q1_target_net"])
@@ -382,7 +395,7 @@ class TDMPC2Agent(Agent, nn.Module):
         return normalized_action.cpu().numpy()
 
     def _update(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,
-                done: torch.Tensor) -> float:
+                done: torch.Tensor) -> dict[str, int | float | bool | Any]:
         # Step 01: Compute targets
         with torch.no_grad():
             next_latent_state = self.encoder_net(next_state)
@@ -424,23 +437,7 @@ class TDMPC2Agent(Agent, nn.Module):
             reward_loss += _discount * F.mse_loss(rew_pred_unbind, rew_unbind)
             q_loss += _discount * (F.mse_loss(q1_unbind, td_targets_unbind)) + (
                 F.mse_loss(q2_unbind, td_targets_unbind))
-            # for q1_unbind_unbind, q2_unbind_unbind in q1_unbind.unbind(0), q2_unbind.unbind(0):
-            #     q_loss += _discount * (F.cross_entropy(q1_unbind_unbind, td_targets_unbind) + F.cross_entropy(q2_unbind_unbind, td_targets_unbind))
             _discount *= self.discount
-
-        # q_loss = F.mse_loss(q1_prediction, td_target, reduction = "none") + F.mse_loss(q2_predicition, td_target, reduction = "none")
-
-        # Step 04: We predict the rewards
-        # predicted_rewards = self.reward_net(prediction_rollout, action)
-
-        # Step 05: We compute the reward loss
-        # reward_loss = F.mse_loss(predicted_rewards, reward, reduction = "none")
-
-        # Step 06: We compute the consisitency loss between the predicted rollout and the ground truth latent states
-        # consistency_loss = F.mse_loss(prediction_rollout, next_latent_state, reduction = "none")
-
-        # Step 07: this is `lambda^t` factor where t is the time step of the horizon. (See Formula 3 and 4 of the TD-MPC2 paper)
-        # horizon_discount_factor = torch.pow(self.discount, torch.arange(self.horizon + 1, device = self.device)).view(1, -1, 1)
 
         # Step 08: Normalize the losses
         consistency_loss = consistency_loss / self.horizon
@@ -450,13 +447,15 @@ class TDMPC2Agent(Agent, nn.Module):
         # Model objective loss: See formula 3
         total_loss = (((self.consistency_coef * consistency_loss)
                        + (self.reward_coef * reward_loss))
-                      + (self.value_coef * q_loss))
+                      + (self.q_coef * q_loss))
 
         self.optim.zero_grad()
         total_loss.backward()
         if self.use_norm_clipping:
-            total_grad_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), self.grad_clip_norm,
+            total_grad_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), self.norm_clipping_value,
                                                              foreach = self.use_clip_foreach)
+        else:
+            total_grad_norm = None
         self.optim.step()
 
         # Update policy
@@ -464,11 +463,23 @@ class TDMPC2Agent(Agent, nn.Module):
         policy_loss = self._calculate_policy_loss(prediction_rollout.detach())
         policy_loss.backward()
         if self.use_norm_clipping:
-            policy_grad_norm = torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.grad_clip_norm,
+            policy_grad_norm = torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.norm_clipping_value,
                                                               foreach = self.use_clip_foreach)
+        else:
+            policy_grad_norm = None
         self.policy_optim.step()
 
-        return total_loss.item()
+        statistics = {
+            "total_loss": total_loss.item(),
+            "policy_loss": policy_loss.item(),
+            "consistency_loss": consistency_loss.item(),
+            "reward_loss": reward_loss.item(),
+            "q_loss": q_loss.item(),
+            "total_grad_norm": total_grad_norm.item(),
+            "policy_grad_norm": policy_grad_norm.item(),
+        }
+
+        return statistics
 
     # TODO
     def _predict_action(self, latent_state: torch.Tensor):
