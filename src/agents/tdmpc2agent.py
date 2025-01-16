@@ -1,11 +1,11 @@
-from typing import List
-
 import gymnasium
+import logging
 import numpy as np
 import torch
 from sympy import false
 from torch import nn
 from torch.nn import functional as F
+from typing import List
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
@@ -20,21 +20,73 @@ See GitHub for original implementation: https://github.com/nicklashansen/tdmpc2/
 Author: Daniel Flat
 """
 
+
 def _log_std_clamp(log_std, min_value = -10, max_value = 2):
     """Clamp log_std to a specific range."""
     return torch.clamp(log_std, min_value, max_value)
 
 
+class SimNorm(nn.Module):
+    def __init__(self, temperature):
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(self, x: torch.Tensor, V = 8):
+        shape = x.shape
+        x = x.view(*shape[:-1], -1, V)
+        x = F.softmax(x / self.temperature, dim = -1)
+        return x.view(*shape)
+        # x = F.softmax(x / self.temperature, dim = -1)
+        # return x
+
+
+class NormedLinear(nn.Module):
+    """
+    Step 01: Linear Layer
+    Step 02 (Optional): Dropout
+    Step 03: LayerNorm
+    Step 04: Activation Function (Mish and SimNorm are supported)
+    """
+
+    def __init__(self, in_features: int, out_features: int, activation_function: str, bias: bool = False,
+                 dropout: float = 0.0, temperature: float = 1):
+        super().__init__()
+        self.linear = nn.Linear(in_features, out_features, bias = bias)
+        self.dropout = nn.Dropout(dropout, inplace = False) if dropout else None
+        self.layer_norm = nn.LayerNorm(out_features)
+
+        if activation_function == "Mish":
+            self.activation_function = nn.Mish(inplace = False)
+        elif activation_function == "SimNorm":
+            self.activation_function = SimNorm(temperature = temperature)
+        else:
+            raise NotImplementedError(f"Activation function {activation_function} not implemented.")
+
+    def forward(self, x):
+        x = self.linear(x)
+        if self.dropout:
+            x = self.dropout(x)
+        x = self.layer_norm(x)
+        x = self.activation_function(x)
+        return x
+
+    # def __repr__(self):
+    #     repr_dropout = f", dropout={self.dropout.p}" if self.dropout else ""
+    #     return f"NormedLinear(in_features={self.in_features}, " \
+    #            f"out_features={self.out_features}, " \
+    #            f"bias={self.bias is not None}{repr_dropout}, " \
+    #            f"act={self.act.__class__.__name__})"
+
+
 # TODO
 class EncoderNet(nn.Module):
-    def __init__(self, state_size: int, latent_size: int):
+    def __init__(self, state_size: int, latent_size: int, temperature: float):
         super().__init__()
 
         self.encoder_net = nn.Sequential(
-            nn.Linear(state_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, latent_size),
-            nn.LayerNorm(latent_size)  # SimNorm equivalent TODO# add SimNorm
+            NormedLinear(in_features = state_size, out_features = 256, activation_function = "Mish"),
+            NormedLinear(in_features = 256, out_features = latent_size, activation_function = "SimNorm",
+                         temperature = temperature),
         )
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
@@ -47,15 +99,15 @@ class EncoderNet(nn.Module):
 
 # TODO
 class DynamicsNet(nn.Module):
-    def __init__(self, latent_size: int, action_size: int):
+    def __init__(self, latent_size: int, action_size: int, temperature: float):
         super().__init__()
 
         self.encoder_net = nn.Sequential(
-            nn.Linear(latent_size + action_size, latent_size),
-            nn.ReLU(),
-            nn.Linear(latent_size, latent_size),
-            nn.ReLU(),
-            nn.Linear(latent_size, latent_size),
+            NormedLinear(in_features = latent_size + action_size, out_features = latent_size,
+                         activation_function = "Mish"),
+            NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
+            NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "SimNorm",
+                         temperature = temperature),
         )
 
     def forward(self, latent_state: torch.Tensor, latent_action: torch.Tensor) -> torch.Tensor:
@@ -73,11 +125,10 @@ class RewardNet(nn.Module):
         super().__init__()
 
         self.encoder_net = nn.Sequential(
-            nn.Linear(latent_size + action_size, latent_size),
-            nn.ReLU(),
-            nn.Linear(latent_size, latent_size),
-            nn.ReLU(),
-            nn.Linear(latent_size, 1),
+            NormedLinear(in_features = latent_size + action_size, out_features = latent_size,
+                         activation_function = "Mish"),
+            NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
+            nn.Linear(latent_size, 1, bias = False),
         )
 
     def forward(self, latent_state: torch.Tensor, latent_action: torch.Tensor) -> torch.Tensor:
@@ -95,11 +146,9 @@ class ActorNet(nn.Module):
         super().__init__()
 
         self.actor_net = nn.Sequential(
-            nn.Linear(latent_size, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 2 * action_size)
+            NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
+            NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
+            nn.Linear(latent_size, 2 * action_size, bias = True)
         )  # mean, std
 
     def forward(self, latent_state: torch.Tensor) -> torch.Tensor:
@@ -116,11 +165,10 @@ class CriticNet(nn.Module):
         super().__init__()
 
         self.critic_net = nn.Sequential(
-            nn.Linear(latent_size + action_size, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 1))
+            NormedLinear(in_features = latent_size + action_size, out_features = latent_size, dropout = 0.01,
+                         activation_function = "Mish"),
+            NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
+            nn.Linear(latent_size, 1, bias = True))
 
     def forward(self, latent_state: torch.Tensor, latent_action: torch.Tensor) -> torch.Tensor:
         """
@@ -165,11 +213,11 @@ class TDMPC2Agent(Agent, nn.Module):
         self.max_std = td_mpc2_settings["MAX_STD"]
         self.temperature = td_mpc2_settings["TEMPERATURE"]
         self.latent_size = td_mpc2_settings["LATENT_SIZE"]
-        self.log_std_min = -10
-        self.log_std_max = 2
+        self.log_std_min = td_mpc2_settings["LOG_STD_MIN"]
+        self.log_std_max = td_mpc2_settings["LOG_STD_MAX"]
         self.log_std_dif = self.log_std_max - self.log_std_min
         self.entropy_coef = 1e-4
-        self.rho = 0.5
+        # self.rho = 0.5 the _discount parameter in the paper. I don't know why they used 0.5
         self.enc_lr_scale = 0.3
         self.grad_clip_norm = 20
         self.lr = 3e-4
@@ -177,8 +225,10 @@ class TDMPC2Agent(Agent, nn.Module):
         self.reward_coef = 0.1
         self.value_coef = 0.1
 
-        self.encoder_net = EncoderNet(state_size = state_size, latent_size = self.latent_size).to(self.device)
-        self.dynamics_net = DynamicsNet(latent_size = self.latent_size, action_size = self.action_size).to(self.device)
+        self.encoder_net = EncoderNet(state_size = state_size, latent_size = self.latent_size,
+                                      temperature = self.temperature).to(self.device)
+        self.dynamics_net = DynamicsNet(latent_size = self.latent_size, action_size = self.action_size,
+                                        temperature = self.temperature).to(self.device)
         self.reward_net = RewardNet(latent_size = self.latent_size, action_size = self.action_size).to(self.device)
 
         self.policy_net = ActorNet(latent_size = self.latent_size, action_size = self.action_size).to(self.device)
@@ -202,10 +252,10 @@ class TDMPC2Agent(Agent, nn.Module):
 
         self.policy_optim = torch.optim.Adam(self.policy_net.parameters(), lr = self.lr)
 
-        # if self.USE_COMPILE:
-        #     logging.info("Start compiling the TD-MPC2 agent.")
-        #     self._update = torch.compile(self._update)
-        #     logging.info("Finished compiling the TD-MPC2 agent")
+        if self.USE_COMPILE:
+            logging.info("Start compiling the TD-MPC2 agent.")
+            self._update = torch.compile(self._update)
+            logging.info("Finished compiling the TD-MPC2 agent")
 
     def __repr__(self):
         """
@@ -221,6 +271,7 @@ class TDMPC2Agent(Agent, nn.Module):
         During training, we add noise to the proposed action.
         """
         proposed_action = self._plan(state)
+        # TODO: df: Should we really noise it? Unclear yet!
         if not self.isEval:
             noise = self.noise_factor * self.noise.sample()
             proposed_action += noise
@@ -233,7 +284,8 @@ class TDMPC2Agent(Agent, nn.Module):
 
         for i in range(1, self.opt_iter + 1):
             # Step 01: We randomly subsample a horizon-long trajectory for updating
-            state, action, reward, next_state, done, _ = memory.sample_horizon(horizon = self.horizon)
+            state, action, reward, next_state, done = memory.sample_horizon(batch_size = self.batch_size,
+                                                                            horizon = self.horizon)
 
             # Step 02: Update the agent.
             loss = self._update(state, action, reward, next_state, done)
@@ -295,6 +347,162 @@ class TDMPC2Agent(Agent, nn.Module):
 
     # ----------------------- Model Functions -----------------------
 
+    # TODO
+    @torch.no_grad()
+    def _plan(self, state: torch.Tensor) -> np.ndarray:
+        """
+        Plan proposed_action sequence of action_sequence_samples using the learned world model.
+
+        Args:
+            state (torch.Tensor): Real state from which to plan in the future.
+            is_training (bool): Whether to use the mean of the action distribution or not. if true, we sample, if not, we take the mean.
+
+        Returns:
+            torch.Tensor: Action to take in the environment at the current timestep.
+        """
+        # Step 01: Sample trajectories based on our policy
+        latent_state = self.encoder_net(state)
+        mean, log_std = self.policy_net(latent_state).chunk(2, dim = -1)  # Use the policy network as a prior
+        std = log_std.exp()
+
+        # reparameterization trick: We take the mean and std as priors for planning
+        # we plan #horizon steps in the future by sampling some future actions
+        action_sequence_samples = mean + std * torch.randn(self.num_samples, self.horizon, self.action_size,
+                                                           device = self.device)
+
+        # we evaluate our action sequences by looking for the one with the highest q-value estimate
+        q_values = self._estimate_q_of_action_sequence(latent_state, action_sequence_samples)
+
+        # sample the next immediate action w.r.t. the highest q-value estimate
+        best_idx = q_values.argmax(dim = 0)
+        best_action = action_sequence_samples[best_idx, 0].squeeze(dim = 0)  # Best immediate action
+
+        # we normalize the action
+        normalized_action = torch.clamp(best_action, self.min_action_torch, self.max_action_torch)
+        return normalized_action.cpu().numpy()
+
+    def _update(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,
+                done: torch.Tensor) -> float:
+        # Step 01: Compute targets
+        with torch.no_grad():
+            next_latent_state = self.encoder_net(next_state)
+            td_target = self._td_target(next_latent_state, reward, done, use_target = True)
+
+        # Step 02: We encode the horizon into the latent space
+        latent_state = self.encoder_net(state)
+
+        # Step 03: Next, we roll out our latent_state with our sequence of actions for the prediction of the next state #horizon-steps in the future
+        # At the same time, we already calculate our prediction loss
+        _latent_state = latent_state[:, 0]
+        prediction_rollout = [_latent_state]
+        _discount = 1
+        consistency_loss = 0
+        # We go over all actions of the horizon sequence
+        for t, (_action, _next_latent_state) in enumerate(
+                zip(action.unbind(dim = 1), next_latent_state.unbind(dim = 1))):
+            _latent_state = self.dynamics_net(_latent_state, _action)
+            prediction_rollout.append(_latent_state)
+            # We calc. the discounted consistency loss.
+            consistency_loss += _discount * F.mse_loss(_latent_state, _next_latent_state)
+            _discount *= self.discount
+        prediction_rollout = torch.stack(prediction_rollout, dim = 1)
+        # prediction_rollout = self._rollout(latent_state[:, 0], action)
+
+        # Step 04: We predict the q_value and the reward of the last rollout
+        _prediction_rollout = prediction_rollout[:, :-1]  # we throw away the last latent rollout to do predictions
+        q1_prediction = self.q1_net(_prediction_rollout, action)
+        q2_prediction = self.q2_net(_prediction_rollout, action)
+        reward_prediction = self.reward_net(_prediction_rollout, action)
+
+        # Step 05: We calculate the reward and q loss
+        reward_loss = 0
+        q_loss = 0
+        _discount = 1
+        for t, (rew_pred_unbind, rew_unbind, td_targets_unbind, q1_unbind, q2_unbind) in enumerate(
+                zip(reward_prediction.unbind(1), reward.unbind(1), td_target.unbind(1), q1_prediction.unbind(1),
+                    q2_prediction.unbind(1))):
+            reward_loss += _discount * F.mse_loss(rew_pred_unbind, rew_unbind)
+            q_loss += _discount * (F.mse_loss(q1_unbind, td_targets_unbind)) + (
+                F.mse_loss(q2_unbind, td_targets_unbind))
+            # for q1_unbind_unbind, q2_unbind_unbind in q1_unbind.unbind(0), q2_unbind.unbind(0):
+            #     q_loss += _discount * (F.cross_entropy(q1_unbind_unbind, td_targets_unbind) + F.cross_entropy(q2_unbind_unbind, td_targets_unbind))
+            _discount *= self.discount
+
+        # q_loss = F.mse_loss(q1_prediction, td_target, reduction = "none") + F.mse_loss(q2_predicition, td_target, reduction = "none")
+
+        # Step 04: We predict the rewards
+        # predicted_rewards = self.reward_net(prediction_rollout, action)
+
+        # Step 05: We compute the reward loss
+        # reward_loss = F.mse_loss(predicted_rewards, reward, reduction = "none")
+
+        # Step 06: We compute the consisitency loss between the predicted rollout and the ground truth latent states
+        # consistency_loss = F.mse_loss(prediction_rollout, next_latent_state, reduction = "none")
+
+        # Step 07: this is `lambda^t` factor where t is the time step of the horizon. (See Formula 3 and 4 of the TD-MPC2 paper)
+        # horizon_discount_factor = torch.pow(self.discount, torch.arange(self.horizon + 1, device = self.device)).view(1, -1, 1)
+
+        # Step 08: Normalize the losses
+        consistency_loss = consistency_loss / self.horizon
+        reward_loss = reward_loss / self.horizon
+        q_loss = q_loss / (2 * self.horizon)  # 2* because we have two q nets
+
+        # Model objective loss: See formula 3
+        total_loss = (((self.consistency_coef * consistency_loss)
+                       + (self.reward_coef * reward_loss))
+                      + (self.value_coef * q_loss))
+
+        self.optim.zero_grad()
+        total_loss.backward()
+        if self.use_norm_clipping:
+            total_grad_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), self.grad_clip_norm,
+                                                             foreach = self.use_clip_foreach)
+        self.optim.step()
+
+        # Update policy
+        self.policy_optim.zero_grad()
+        policy_loss = self._calculate_policy_loss(prediction_rollout.detach())
+        policy_loss.backward()
+        if self.use_norm_clipping:
+            policy_grad_norm = torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.grad_clip_norm,
+                                                              foreach = self.use_clip_foreach)
+        self.policy_optim.step()
+
+        return total_loss.item()
+
+    # TODO
+    def _predict_action(self, latent_state: torch.Tensor):
+        """
+        Samples an action from the policy prior.
+        The policy prior is a Gaussian distribution with
+        mean and (log) std predicted by a neural network.
+        """
+
+        # Step 01: Get the gaussian policy prior from the policy network
+        mean, log_std = self.policy_net(latent_state).chunk(2, dim = -1)
+        log_std = mathutil.log_std(log_std, self.log_std_min, self.log_std_dif)
+        eps = torch.randn_like(mean)
+
+        log_prob = mathutil.gaussian_logprob(eps, log_std)
+
+        # Scale log probability by action dimensions
+        size = eps.shape[-1]
+        scaled_log_prob = log_prob * size
+
+        # Reparameterization trick
+        action = mean + eps * log_std.exp()
+        mean, action, log_prob = mathutil.squash(mean, action, log_prob)
+
+        entropy_scale = scaled_log_prob / (log_prob + 1e-8)
+        info = {
+            "mean": mean,
+            "log_std": log_std,
+            "action_prob": 1.,
+            "entropy": -log_prob,
+            "scaled_entropy": -log_prob * entropy_scale,
+        }
+        return action, info
+
     def _min_q_value(self, state: torch.Tensor, action: torch.Tensor, use_target: bool):
         """
         Computes the minimum q value of a state-action pair.
@@ -334,53 +542,17 @@ class TDMPC2Agent(Agent, nn.Module):
         final_q_value = _G + _discount * min_q_value
         return final_q_value
 
-    # TODO
-    @torch.no_grad()
-    def _plan(self, state: torch.Tensor) -> np.ndarray:
-        """
-        Plan proposed_action sequence of action_sequence_samples using the learned world model.
-
-        Args:
-            state (torch.Tensor): Real state from which to plan in the future.
-            is_training (bool): Whether to use the mean of the action distribution or not. if true, we sample, if not, we take the mean.
-
-        Returns:
-            torch.Tensor: Action to take in the environment at the current timestep.
-        """
-        # Step 01: Sample trajectories based on our policy
-        latent_state = self.encoder_net(state)
-        mean, log_std = self.policy_net(latent_state).chunk(2, dim = -1)  # Use the policy network as a prior
-        std = log_std.exp()
-
-        # reparameterization trick: We take the mean and std as priors for planning
-        # we plan #horizon steps in the future by sampling some future actions
-        action_sequence_samples = mean + std * torch.randn(self.num_samples, self.horizon, self.action_size,
-                                                           device = self.device)
-
-        # we evaluate our action sequences by looking for the one with the highest q-value estimate
-        q_values = self._estimate_q_of_action_sequence(latent_state, action_sequence_samples)
-
-        # sample the next immediate action w.r.t. the highest q-value estimate
-        best_idx = q_values.argmax(dim = 0)
-        best_action = action_sequence_samples[best_idx, 0].squeeze(dim = 0)  # Best immediate action
-
-        # we normalize the action
-        normalized_action = torch.clamp(best_action, self.min_action_torch, self.max_action_torch)
-        return normalized_action.cpu().numpy()
-
     def _calculate_policy_loss(self, latent_state_sequence: torch.Tensor) -> torch.Tensor:
-        """
-        calculates the policy net using a sequence of latent states.
-
-        """
-        # self.policy_optim.zero_grad()
         action, info = self._predict_action(latent_state_sequence)
         q_value = self._min_q_value(latent_state_sequence, action, use_target = false)
 
-        # Loss is a weighted sum of Q-values
-        rho = torch.pow(self.rho, torch.arange(len(q_value), device = self.device))
-        pi_loss = (rho * -(self.entropy_coef * info["scaled_entropy"] + q_value).mean()).mean()
-        return pi_loss
+        # Loss is a weighted sum of horizon Q-values
+        policy_loss = 0
+        _discount = 1
+        for _q_value, _entropy in zip(q_value.unbind(1), info["scaled_entropy"].unbind(1)):
+            policy_loss += -_discount * torch.mean(self.entropy_coef * _entropy + _q_value)
+            _discount *= self.discount
+        return policy_loss
 
     @torch.no_grad()
     def _td_target(self, next_latent_state: torch.Tensor, reward: torch.Tensor, done: torch.Tensor,
@@ -389,102 +561,3 @@ class TDMPC2Agent(Agent, nn.Module):
         target_q = self._min_q_value(next_latent_state, next_action, use_target)
         td_target = reward + self.discount * (1 - done) * target_q
         return td_target
-
-    def _update(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,
-                done: torch.Tensor) -> float:
-        # Step 01: Compute targets
-        with torch.no_grad():
-            next_latent_state = self.encoder_net(next_state)
-            td_target = self._td_target(next_latent_state, reward, done, use_target = True)
-
-        latent_state = self.encoder_net(state)
-        q1_value = self.q1_net(latent_state, action)
-        q2_value = self.q2_net(latent_state, action)
-        q_loss = F.mse_loss(q1_value, td_target) + F.mse_loss(q2_value, td_target)
-
-        latent_state_rollout = self._rollout(latent_state, action)
-        reward_loss = self._reward_loss(latent_state_rollout, reward)
-        consistency_loss = self._consistency_loss(latent_state_rollout, next_latent_state)
-
-        total_loss = (
-                self.consistency_coef * consistency_loss
-                + self.reward_coef * reward_loss
-                + self.value_coef * q_loss
-        )
-
-        self.optim.zero_grad()
-        total_loss.backward()
-        if self.use_norm_clipping:
-            total_grad_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), self.grad_clip_norm,
-                                                             foreach = self.use_clip_foreach)
-        self.optim.step()
-
-        # Update policy
-        self.policy_optim.zero_grad()
-        policy_loss = self._calculate_policy_loss(latent_state_rollout.detach())
-        policy_loss.backward()
-        if self.use_norm_clipping:
-            policy_grad_norm = torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.grad_clip_norm,
-                                                              foreach = self.use_clip_foreach)
-        self.policy_optim.step()
-
-        return total_loss.item()
-
-
-    # TODO
-    def _predict_action(self, latent_state: torch.Tensor):
-        """
-        Samples an action from the policy prior.
-        The policy prior is a Gaussian distribution with
-        mean and (log) std predicted by a neural network.
-        """
-
-        # Step 01: Get the gaussian policy prior from the policy network
-        mean, log_std = self.policy_net(latent_state).chunk(2, dim = -1)
-        log_std = mathutil.log_std(log_std, self.log_std_min, self.log_std_dif)
-        eps = torch.randn_like(mean)
-
-        log_prob = mathutil.gaussian_logprob(eps, log_std)
-
-        # Scale log probability by action dimensions
-        size = eps.shape[-1]
-        scaled_log_prob = log_prob * size
-
-        # Reparameterization trick
-        action = mean + eps * log_std.exp()
-        mean, action, log_prob = mathutil.squash(mean, action, log_prob)
-
-        entropy_scale = scaled_log_prob / (log_prob + 1e-8)
-        info = {
-            "mean": mean,
-            "log_std": log_std,
-            "action_prob": 1.,
-            "entropy": -log_prob,
-            "scaled_entropy": -log_prob * entropy_scale,
-        }
-        return action, info
-
-    @torch.no_grad()
-    def _td_target(self, next_latent_state: torch.Tensor, reward: torch.Tensor, done: torch.Tensor,
-                   use_target) -> torch.Tensor:
-        next_action, _ = self._predict_action(next_latent_state)
-        target_q = self._min_q_value(next_latent_state, next_action, use_target)
-        td_target = reward + self.discount * (1 - done) * target_q
-        return td_target
-
-    def _rollout(self, latent_state, actions):
-        latent_rollout = []
-        _latent_state = latent_state[0]
-        for action in actions.unbind(dim = 0):
-            _latent_state = self.dynamics_net(_latent_state, action)
-            latent_rollout.append(_latent_state)
-        return torch.stack(latent_rollout, dim = 0)
-
-    def _reward_loss(self, rollout_latent_space, reward):
-        with torch.no_grad():
-            predicted_action, _ = self._predict_action(rollout_latent_space)
-        predicted_rewards = self.reward_net(rollout_latent_space, predicted_action)
-        return F.mse_loss(predicted_rewards, reward)
-
-    def _consistency_loss(self, latent_state_rollout, next_latent_state):
-        return F.mse_loss(latent_state_rollout, next_latent_state)

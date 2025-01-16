@@ -1,10 +1,10 @@
+from collections import deque
+
 import logging
 import random
-from collections import deque
-from typing import Any, List, Tuple
-
 import torch
 from torch import Tensor
+from typing import Any, List, Tuple
 
 
 class ReplayMemory:
@@ -51,42 +51,52 @@ class ReplayMemory:
 
         return states, actions, rewards, next_states, dones, infos
 
-    def sample_horizon(self, horizon: bool) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, List[Any]]:
+    def sample_horizon(self, batch_size: int, horizon: int) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """
         Samples a trajectory of a random episode from the memory.
         This trajectory starts at a random position in the episode and goes #horizon steps in the future
         returns the tuple of the horizon trajectory.
         :returns
             e.g. if horizon = 3,
-            horizon_states tensor(horizon + 1, state_size)
-            horizon_actions tensor(horizon + 1, action_size)
-            horizon_rewards tensor(horizon + 1, 1)
-            horizon_dones tensor(horizon + 1, 1)
-            horizon_next_state tensor(horizon + 1, state_size)
-            horizon_infos list(horizon + 1, info_length)
+            horizon_states tensor(batch_size, horizon + 1, state_size)
+            horizon_actions tensor(batch_size, horizon + 1, action_size)
+            horizon_rewards tensor(batch_size, horizon + 1, 1)
+            horizon_dones tensor(batch_size, horizon + 1, 1)
+            horizon_next_state tensor(batch_size, horizon + 1, state_size)
+            horizon_infos list(batch_size, horizon + 1, info_length) -> not available yet
         """
 
-        # Step 01: We sample a random episode
-        batch = random.sample(self.storage, 1)[0]
-        states, actions, rewards, next_states, dones, infos = batch
-        episode_length = states.shape[0]
+        # Step 01: We sample a random episode with replacement *for each batch*
+        batches = random.choices(self.storage, k = batch_size)
+        states, actions, rewards, next_states, dones, infos = zip(*batches)
+        episode_length = len(states)
 
-        # # Step 02: If the episode is smaller than the required batch size, throw an error
-        # if batch_size > episode_length:
-        #     raise Exception("Required batch size is larger than the episode length!")
+        # Step 02: If the episode is smaller than the required batch size, throw an error
+        # CURRENTLY ONLY A SANITY CHECK!
+        if batch_size > episode_length:
+            raise Exception("Required batch size is larger than the episode length!")
 
-        # Step 03: We sample a random number to get the start_index of the horizon
-        start_index = torch.randint(0, episode_length - horizon, (1,), device = self.device)
+        # Step 03: Convert the tuples to tensors
+        # (batch_size, episode_length, dim of the object)
+        states = torch.stack(states).to(self.device)
+        actions = torch.stack(actions).to(self.device)
+        rewards = torch.stack(rewards).unsqueeze(-1).to(self.device)
+        next_states = torch.stack(next_states).to(self.device)
+        dones = torch.stack(dones).unsqueeze(-1).to(self.device)
+        # infos = list(infos)
 
-        # Step 04: We only want the horizon of the episode
-        horizon_states = states[start_index:start_index + horizon + 1]
-        horizon_actions = actions[start_index:start_index + horizon + 1]
-        horizon_rewards = rewards[start_index:start_index + horizon + 1].unsqueeze(-1)
-        horizon_next_states = next_states[start_index:start_index + horizon + 1]
-        horizon_dones = dones[start_index:start_index + horizon + 1].unsqueeze(-1)
-        horizon_infos = infos[start_index:start_index + horizon + 1]
+        # Step 04: We sample a random number to get the start_index of the horizon
+        start_indices = random.randint(0, episode_length - horizon - 1)
 
-        return horizon_states, horizon_actions, horizon_rewards, horizon_next_states, horizon_dones, horizon_infos
+        # Step 05: We only want the horizon of the episode
+        horizon_states = states[:, start_indices:start_indices + horizon + 1, :]
+        horizon_actions = actions[:, start_indices:start_indices + horizon + 1, :]
+        horizon_rewards = rewards[:, start_indices:start_indices + horizon + 1, :]
+        horizon_next_states = next_states[:, start_indices:start_indices + horizon + 1, :]
+        horizon_dones = dones[:, start_indices:start_indices + horizon + 1, :]
+        # horizon_infos = infos[:, start_indices]
+
+        return horizon_states, horizon_actions, horizon_rewards, horizon_next_states, horizon_dones  # , horizon_infos
 
 
 

@@ -1,9 +1,8 @@
 """
 This is the config file for the training run main.py.
 """
-from time import localtime, strftime
-
 import torch
+from time import localtime, strftime
 
 from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
@@ -46,7 +45,7 @@ SETTINGS = {
         "BUFFER_SIZE": 1_000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
-        "NUM_TRAINING_EPISODES": 10_000,  # How many training episodes should be run?
+        "NUM_TRAINING_EPISODES": 1000,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
@@ -207,6 +206,13 @@ SETTINGS = {
         "MAX_STD": 2,
         "TEMPERATURE": 0.5,
         "LATENT_SIZE": 512,
+        "LOG_STD_MIN": -10,
+        "LOG_STD_MAX": 2,
+        "log_std_min": -10,
+        "log_std_min": -10,
+        "log_std_min": -10,
+        "log_std_min": -10,
+        "log_std_min": -10,
     }
 }
 # Convenient Constants
