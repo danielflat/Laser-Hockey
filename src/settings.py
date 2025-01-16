@@ -37,7 +37,7 @@ SETTINGS = {
         "SEED": 24,  # The seed that we want to use
         "DEVICE": torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # On which machine is it running?
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
-        "USE_ENV": HOCKEY,  # The used environment
+        "USE_ENV": PENDULUM,  # The used environment
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
@@ -46,13 +46,13 @@ SETTINGS = {
         "BUFFER_SIZE": 1_000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
-        "NUM_TRAINING_EPISODES": 10_000,  # How many training episodes should be run?
+        "NUM_TRAINING_EPISODES": 2000,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
         "SHOW_PLOTS": True,  # If you want to plot statistics after each episode
         "CHECKPOINT_ITER": 50,  # saves a checkpoint of this model after x iterations
-
+        "CURIOSITY": None,  #Proportion of curiosity reward calculated by ICM to be added to the real reward. If None no curiosity exploration is used
     },
     # The settings for the agent.py
     "AGENT": {
@@ -132,7 +132,7 @@ SETTINGS = {
         "ACTOR": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,
-                "LEARNING_RATE": 0.00001,  # The learning rate for the agent
+                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
                 "WEIGHT_DECAY": 1e-2,  # The weight decay rate
@@ -143,7 +143,7 @@ SETTINGS = {
         "CRITIC": {
             "OPTIMIZER": {
                 "OPTIM_NAME": ADAM,  # Which optimizer to use
-                "LEARNING_RATE": 0.0001,  # The learning rate for the agent
+                "LEARNING_RATE": 0.001,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
                 "WEIGHT_DECAY": 1e-2,  # The weight decay rate
@@ -153,7 +153,7 @@ SETTINGS = {
         },
         "POLICY_DELAY": 2,  # The delay of the policy optimization
         "NOISE_CLIP": 0.1,  # The gaussian noise clip value
-        "HIDDEN_DIM": 256, 
+        "HIDDEN_DIM": 128, 
         "NUM_LAYERS": 5, #num hidden layers, only changed if target_net == false
         "BATCHNORM_MOMENTUM": 0.9, #momentum for batchnorm, only used if target_net == false
         "NOISE": _DEFAULT_NOISE

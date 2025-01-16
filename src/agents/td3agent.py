@@ -9,6 +9,8 @@ from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util.directoryutil import get_path
 from src.util.noiseutil import initNoise
+from src.util.icmutil import ICM
+
 
 """
 Author: Andre Pfrommer
@@ -57,8 +59,7 @@ class Critic(nn.Module):
         Calculates the Q value for the given state and action
         """
         # Action and State concatenated as input into the q network
-        state = state.float()
-        action = action.float()
+        
         concat_input = torch.hstack((state, action))
         return self.network(concat_input)
 
@@ -99,7 +100,7 @@ class TD3Agent(Agent):
         self.action_scale = (self.action_high - self.action_low) / 2.0
         self.action_bias = (self.action_high + self.action_low) / 2.0
         state_size = state_space.shape[0]
-        action_size = self.get_num_actions(action_space)
+        action_size = action_space.shape[0]
 
         self.policy_delay = td3_settings["POLICY_DELAY"]
         self.noise_clip = td3_settings["NOISE_CLIP"]
@@ -111,8 +112,10 @@ class TD3Agent(Agent):
         if self.use_target_net:
             self.cross_q = False
         
+        #Initialize the noise 
         self.noise = initNoise(action_shape = (action_size,), noise_settings = td3_settings["NOISE"],
                                device = self.device)
+        self.noise_factor = td3_settings["NOISE"]["NOISE_FACTOR"]
 
         # Here we have 2 Q Networks
         self.Critic1 = Critic(state_size=state_size,
@@ -160,6 +163,9 @@ class TD3Agent(Agent):
 
         #Define Loss function
         self.criterion = self.initLossFunction(loss_name = td3_settings["CRITIC"]["LOSS_FUNCTION"])
+        
+        #Initialize intrinsic curiosity module 
+        self.icm = ICM(state_size, action_size, discrete = False)
 
     def act(self, state: torch.Tensor) -> torch.Tensor:
         """
@@ -170,41 +176,37 @@ class TD3Agent(Agent):
         """
         
         if self.isEval:
-            self.epsilon = 0
-        
+            self.noise_factor = 0
+            
         with torch.no_grad():
             #Exploration noise
-            noise = torch.clamp(
-                torch.from_numpy(self.noise.sample() * self.epsilon),
-                min = -self.noise_clip,
-                max = self.noise_clip)
+            noise = torch.from_numpy(self.noise.sample() * self.noise_factor)
             
             #Forward pass for the Actor network and rescaling
             self.Actor.eval() #eval mode for batchnorm to compute running statistics
-            det_action = self.Actor.forward(state) * self.action_scale + self.action_bias
-            action = det_action 
+            det_action = self.Actor(state) * self.action_scale + self.action_bias
+            action = det_action + noise
             action = torch.clamp(
                 det_action + noise, 
                 min=self.action_low, #Minimum action value
                 max=self.action_high) #Maximum action value
             
-        action = action.numpy()
-        return action
+        return action.numpy()
 
     def critic_forward(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, done: torch.Tensor, next_state: torch.Tensor) -> torch.Tensor:
         """
         Calculates the TD Target and the loss for the Q networks
-        1. Sample the next action from the target Actor network using gaussian exploration noise
-        2. Calculate the Q values for the next state and next action using both target Q networks
+        1. Sample the next action from the target Actor network using gaussian exploration noise  
+        2. Calculate the Q values for the next state and next action using both Q networks
+            NOTE: When using Cross-Q, we forward both the state and next state through the Q networks
         3. Calculate the TD Target by bootstrapping the minimum of the two Q networks
         4. Calculate the loss for both Q networks using the TD Target
         
-        If cross_q is True, we use joint forward pass to use batchnorm on the critic network
         """
 
         # Exploration noise
         noise = torch.clamp(
-            torch.from_numpy(self.noise.sample() * self.epsilon),
+            torch.from_numpy(self.noise.sample() * self.noise_factor),
             min = -self.noise_clip,
             max = self.noise_clip)
         
@@ -214,9 +216,9 @@ class TD3Agent(Agent):
             next_action = torch.clamp(
                 next_action + noise,
                 min = self.action_low,  # Minimum action value
-                max = self.action_high)  # Maximum action value
+                max = self.action_high).float()  # Maximum action value
             
-            #Joint forward pass for Q networks
+            # Concat both states and actions for joint forward pass
             cat_states = torch.cat([state, next_state], 0) # (batch_size x 2, state_size)
             cat_actions = torch.cat([action, next_action], 0) # (batch_size x 2, action_size)
 
@@ -235,30 +237,31 @@ class TD3Agent(Agent):
             #3. Bootstrapping the minimum of the two Q networks
             td_target = (reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2)).detach()
                 
-            #4. Logging the Q values for the next state and next action
+            #4. Find the MSE loss for both Q networks
             Critic1_loss = self.criterion(q1, td_target)
             Critic2_loss = self.criterion(q2, td_target)
             Critic_loss = Critic1_loss + Critic2_loss
         
         else:
             # 1. Next action via the target Actor network
-            next_action = self.Actor_target.forward(next_state) * self.action_scale + self.action_bias
+            next_action = self.Actor_target(next_state) * self.action_scale + self.action_bias
             next_action = torch.clamp(
                 next_action + noise,
-                min = self.action_low,  # Minimum action value
-                max = self.action_high)  # Maximum action value
-
-            # 2. Forward pass for both Q networks
-            q_prime1 = self.Critic1_target.forward(next_state, next_action)
-            q_prime2 = self.Critic2_target.forward(next_state, next_action)
+                min = self.action_low,          # Minimum action value
+                max = self.action_high).float()  # Maximum action value
             
-            #3. Bootstrapping the minimum of the two Q networks
+            # 2. Forward pass for both Q networks
+            q_prime1 = self.Critic1_target(next_state, next_action)
+            q_prime2 = self.Critic2_target(next_state, next_action)
+            
+            # 3. Bootstrapping the minimum of the two Q networks
             td_target = reward + (1 - done) * self.discount * torch.min(q_prime1, q_prime2).detach()
                 
-            #4. Logging the Q values for the next state and next action
-            Critic1_loss = self.criterion(self.Critic1.forward(state, action), td_target)
-            Critic2_loss = self.criterion(self.Critic2.forward(state, action), td_target)
+            # 4. Find the MSE loss for both Q networks
+            Critic1_loss = self.criterion(self.Critic1(state, action), td_target)
+            Critic2_loss = self.criterion(self.Critic2(state, action), td_target)
             Critic_loss = Critic1_loss + Critic2_loss
+            
         return Critic_loss
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
@@ -272,6 +275,10 @@ class TD3Agent(Agent):
         for i in range(1, self.opt_iter + 1):
             #Sample from the replay memory
             state, action, reward, next_state, done, info = memory.sample(self.batch_size, randomly=True)
+            
+            # Train the curiosity module 
+            self.icm.train(state, next_state, action)
+            
             #Forward pass for Q networks
             if self.USE_BF_16:
                 with torch.autocast(device_type = self.device.type, dtype = torch.bfloat16):
@@ -309,9 +316,6 @@ class TD3Agent(Agent):
 
             #Logging the losses, here only the critic loss
             losses.append(Critic_loss.item())
-            
-        #after each optimization, decay epsilon
-        self.adjust_epsilon(episode_i)
 
         #after each optimization, update actor and critic target networks
         if episode_i % self.target_net_update_freq == 0 and self.use_target_net:

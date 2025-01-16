@@ -12,6 +12,7 @@ from torch.distributions import Categorical, MultivariateNormal
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util.directoryutil import get_path
+from src.util.icmutil import ICM
 
 """
 Author : Andre Pfrommer
@@ -61,7 +62,7 @@ class Actor(nn.Module):
         """
         forwards input through the network
          First preprocessing the input state
-         If action space u:
+         If action space continuous:
          - Output layer for the mean of multivariate Gaussian distribution
          - Output layer for the covraiance matrix of multivariate Gaussian distribution as cholesky factorization
          If action space discrete:
@@ -118,7 +119,7 @@ class Actor(nn.Module):
 class Critic(nn.Module):
     """
     Critic (Q function) for MPO estimating the Q value of a state-action pair
-    If action space u:
+    If action space continuous:
     - Input layer for the state and action
     - Output is a scalar Q value for the given action
     If action space discrete:
@@ -205,12 +206,6 @@ class MPOAgent(Agent):
         (float) hard constraint of the mean in the M-step. Used for continuous case
     :param kl_var_constraint:
         (float) hard constraint of the covariance in the M-step. Used for continuous case
-    :param alpha_scale:
-        (float) scaling factor of the lagrangian multiplier in the M-step. Used for discrete case
-    :param alpha_mu_scale:
-        (float) scaling factor of the lagrangian multiplier of the mean in the M-step. Used for continuous case
-    :param alpha_var_scale:
-        (float) scaling factor of the lagrangian multiplier of the covariance in the M-step. Used for continuous case
     
     """
     def __init__(self, agent_settings, device, state_space, action_space, mpo_settings):
@@ -272,6 +267,9 @@ class MPOAgent(Agent):
 
         #Define Loss function
         self.criterion = self.initLossFunction(loss_name = mpo_settings["CRITIC"]["LOSS_FUNCTION"])
+        
+        #Initialize intrinsic curiosity module 
+        self.icm = ICM(self.ds, self.da, 1 - self.continuous)
         
     def __repr__(self):
         """
@@ -506,6 +504,10 @@ class MPOAgent(Agent):
             
             # Sample from replay buffer, dimensions (K, ds), (K, da), (K,), (K, ds) 
             states, actions, rewards, next_states, dones, _ = memory.sample(batch_size=self.batch_size, randomly=True)
+            
+            # Train the curiosity module 
+            self.icm.train(states, next_states, actions)
+            
             # 1: Policy Evaluation: Update Critic (Q-function)
             loss_critic, q_estimates = self.critic_update(states, actions, dones, next_states, rewards, N)
             # Backward pass in the critic network
@@ -600,7 +602,7 @@ class MPOAgent(Agent):
                     #self.η_kl -= self.α_scale * (self.ε_kl - kl).item()
                     lagrangian_loss = self.η_kl * (self.ε_kl - kl)
                     self.lagrangian_optimizer_disc.zero_grad()
-                    langragian_loss.backward(retain_graph=True)
+                    lagrangian_loss.backward(retain_graph=True)
                     self.lagrangian_optimizer_disc.step()
                     η_kl_np = self.η_kl.detach().item()
                     
@@ -618,7 +620,6 @@ class MPOAgent(Agent):
                 if self.use_gradient_clipping:
                     nn.utils.clip_grad_norm_(self.actor.parameters(), self.gradient_clipping_value, 2)
                 self.actor_optimizer.step()
-            
             
             #Keep track of the losses
             losses.append([loss_critic.item()])
