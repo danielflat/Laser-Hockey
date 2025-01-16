@@ -404,6 +404,120 @@ def do_hockey_training(env, agent, memory, opponent_pool: dict):
         if (i_training % CHECKPOINT_ITER == 0):
             agent.saveModel(MODEL_NAME, i_training)
 
+def do_sac_hockey_training(env, agent, memory, opponent_pool: dict):
+    episode_durations = []
+    episode_rewards = []
+    episode_losses = []
+    episode_epsilon = []
+
+    win_rates = {opponent: 0.5 for opponent in opponent_pool.keys()}  # Start with 50% win rate for each opponent
+
+    memory_opponent = ReplayMemory(capacity = BUFFER_SIZE, device = DEVICE)
+
+    i_training = 0
+
+    print("[INFO] Collecting Experiences for SAC until Buffer is full enough to sample well...")
+
+    while i_training < NUM_TRAINING_EPISODES:
+        # We track for each episode how high the reward was
+        t_start = time.time()
+        total_reward = 0
+
+        opponent_name = \
+            random.choices(list(opponent_pool.keys()), weights = [1 - abs(0.5 - win_rates[o]) for o in opponent_pool])[
+                0]
+        opponent = opponent_pool[opponent_name]
+
+        # For reproducibility of the training, we use predefined seeds
+        state, info = env.reset(seed = SEED + i_training - 1)
+        state_opponent = env.obs_agent_two()
+        # Convert state to torch
+        state = torch.tensor(state, device = DEVICE, dtype = torch.float32)
+        state_opponent = torch.tensor(state_opponent, device = DEVICE, dtype = torch.float32)
+
+        losses = []
+
+        for step in count(start = 1):
+            # Render the scene
+            env.render(mode = RENDER_MODE)
+            # env.render(mode = "human")  # for debugging
+
+            # choose the action
+            action = agent.act(state)
+            action_opponent = opponent.act(state_opponent)
+
+            # perform the action
+            next_state, reward, terminated, truncated, info = env.step(np.hstack([action, action_opponent]))
+            next_state_opponent = env.obs_agent_two()
+
+            # df: Sometimes, the reward yields small numbers because in the env, they also consider the distance to the puck.
+            # In my suggestion, this is not a good thing to do because it sets an unnecessary prior to the model.
+            # Therefore, we normalize it to 0 for simplicity.
+            if info["winner"] == 1:
+                reward = 10
+            elif info["winner"] == -1:
+                reward = -10
+            else:
+                reward = 0
+
+            # track the total reward
+            total_reward += reward
+
+            # Convert quantities into tensors
+            action = torch.tensor(action, device = DEVICE, dtype = torch.float32)
+            action_opponent = torch.tensor(action_opponent, device = DEVICE, dtype = torch.float32)
+            reward = torch.tensor(reward, device = DEVICE, dtype = torch.float32)
+            done = torch.tensor(terminated or truncated, device = DEVICE,
+                                dtype = torch.int)  # to be able to do arithmetics with the done signal, we need an int
+            next_state = torch.tensor(next_state, device = DEVICE, dtype = torch.float32)
+            next_state_opponent = torch.tensor(next_state_opponent, device = DEVICE, dtype = torch.float32)
+
+            # Store this transition in the memory
+            memory.push(state, action, reward, next_state, done, info)
+            memory_opponent.push(state_opponent, action_opponent, -reward, next_state_opponent, done, info)
+
+            if len(memory) >= (100 * BATCH_SIZE):
+                step_losses = agent.optimize(memory = memory, episode_i = i_training)
+                losses = np.concatenate((losses, step_losses), axis = 0)
+
+            # Update the state
+            state = next_state
+            state_opponent = next_state_opponent
+
+            # If this transition is the last, safe the number of done steps in the env. and end this episode
+            if done:
+                episode_durations.append(step)
+                break
+
+        if len(memory) >= 100 * BATCH_SIZE:
+            # after each episode, we want to log some statistics
+            episode_rewards.append(total_reward)
+
+            t_end = time.time()
+            episode_time = t_end - t_start
+            episode_losses.append(losses)
+            episode_epsilon.append(agent.epsilon)
+            logging.info(
+                f"Training Iter: {i_training} | Req. Steps: {episode_durations[i_training - 1]} | Total reward: {total_reward:.4f} |"
+                f" Opponent: {opponent_name} | Avg. Loss: {np.array(losses).mean():.4f} | Epsilon: {agent.epsilon:.4f} | Req. Time: {episode_time:.4f} sec.")
+
+            # Every 100 episodes, you update the self opponent with the current weights
+            if SELF_PLAY and i_training % 100 == 0:
+                opponent_pool[USE_ALGO].import_checkpoint(agent.export_checkpoint())
+                logging.info(f"Training Iter: {i_training} Update Self Opponent weights {opponent_pool[USE_ALGO]}")
+
+            # Plot every 100 episodes
+            if SHOW_PLOTS and i_training % 100 == 0:
+                plot_training_metrics(episode_durations = episode_durations, episode_rewards = episode_rewards,
+                                      episode_losses = episode_losses, current_episode = i_training,
+                                      episode_update_iter = EPISODE_UPDATE_ITER)
+
+            # after some time, we save a checkpoint of our model
+            if (i_training % CHECKPOINT_ITER == 0):
+                agent.saveModel(MODEL_NAME, i_training)
+
+            i_training += 1
+
 
 def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_opponent: Agent):
     episode_durations = []
@@ -774,6 +888,8 @@ def main():
         if USE_ALGO == TDMPC2_ALGO:
             do_tdmpc2_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool,
                                       self_opponent = self_opponent)
+        elif USE_ALGO == SAC_ALGO:
+            do_sac_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool)
         else:
             do_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool)
 

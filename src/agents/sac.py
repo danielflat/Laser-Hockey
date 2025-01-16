@@ -220,7 +220,6 @@ class SoftActorCritic(Agent):
         # If your environment expects a NumPy array, detach and move to CPU:
         action = action.squeeze().cpu().numpy()
 
-        action = np.expand_dims(action, axis=0)
         return action
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
