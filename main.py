@@ -15,6 +15,9 @@ from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, 
 from src.util.contract import initAgent, initEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics
 
+if not hasattr(np, 'bool8'):
+    np.bool8 = np.bool_ 
+
 """
 This is the main file of this project.
 Here, you can find the main training loop.
