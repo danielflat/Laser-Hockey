@@ -242,7 +242,7 @@ class SoftActorCritic(Agent):
         losses = []
         for _ in range(self.opt_iter):
             # 1. Sample from replay
-            states, actions, rewards, next_states, dones, _ = memory.sample(self.batch_size)
+            states, actions, rewards, next_states, dones, _ = memory.sample(self.batch_size, randomly=True)
 
             # 2. Compute next actions and next log probs using the current actor
             with torch.no_grad():
