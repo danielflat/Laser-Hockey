@@ -8,11 +8,10 @@ Author: Daniel
 """
 from __future__ import annotations
 
-import logging
-import os
-
 import gymnasium
+import logging
 import numpy as np
+import os
 import torch
 from torch import device
 
@@ -84,21 +83,15 @@ def initAgent(use_algo: str, env, device: device,
             return DQNAgent(state_space = state_space, action_space = action_space, agent_settings = agent_settings,
                             dqn_settings = dqn_settings, device = device)
         elif use_algo == PPO_ALGO:
-            # state_space_shape: Tuple[int, ...] = env.observation_space.shape
-            # action_size: int = env.action_space.n
             return PPOAgent(state_space = state_space, action_space = action_space,
                             agent_settings = agent_settings, ppo_settings = ppo_settings, device = device)
         elif use_algo == DDPG_ALGO:
             return DDPGAgent(observation_space = env.observation_space, action_space = env.action_space,
                              agent_settings = agent_settings, ddpg_settings = ddpg_settings, device = device)
         elif use_algo == TD3_ALGO:
-            # state_space_shape: Tuple[int, ...] = env.observation_space.shape
-            # action_space: Tuple[int, ...] = env.action_space
             return TD3Agent(state_space = state_space, action_space = action_space,
                             agent_settings = agent_settings, td3_settings = td3_settings, device = device)
         elif use_algo == SAC_ALGO:
-            # state_space_shape: Tuple[int, ...] = env.observation_space.shape
-            # action_space: Tuple[int, ...] = env.action_space
             return SoftActorCritic(
                 state_space = state_space,
                 action_space = action_space,
@@ -107,8 +100,6 @@ def initAgent(use_algo: str, env, device: device,
                 sac_settings = sac_settings
             )
         elif use_algo == MPO_ALGO:
-            # state_space_shape: Tuple[int, ...] = env.observation_space.shape
-            # action_space: Tuple[int, ...] = env.action_space
             return MPOAgent(
                 state_space = state_space,
                 action_space = action_space,
