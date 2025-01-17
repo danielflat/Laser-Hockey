@@ -220,7 +220,6 @@ class SoftActorCritic(Agent):
         # If your environment expects a NumPy array, detach and move to CPU:
         action = action.squeeze().cpu().numpy()
 
-        action = np.expand_dims(action, axis=0)
         return action
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
@@ -242,7 +241,7 @@ class SoftActorCritic(Agent):
         losses = []
         for _ in range(self.opt_iter):
             # 1. Sample from replay
-            states, actions, rewards, next_states, dones, _ = memory.sample(self.batch_size)
+            states, actions, rewards, next_states, dones, _ = memory.sample(self.batch_size, randomly=True)
 
             # 2. Compute next actions and next log probs using the current actor
             with torch.no_grad():
@@ -382,7 +381,41 @@ class SoftActorCritic(Agent):
         print(f"Model loaded from {file_name}")
 
     def import_checkpoint(self, checkpoint: dict) -> None:
-        raise NotImplementedError
+        """
+        Loads model parameters from a checkpoint dictionary.
+        The dictionary should contain keys: 'actor', 'critic1', 'critic2', 
+        'critic1_target', 'critic2_target', and 'log_alpha'.
+        """
+        # Load actor and critic network parameters
+        self.actor.load_state_dict(checkpoint["actor"])
+        self.critic1.load_state_dict(checkpoint["critic1"])
+        self.critic2.load_state_dict(checkpoint["critic2"])
+        self.critic1_target.load_state_dict(checkpoint["critic1_target"])
+        self.critic2_target.load_state_dict(checkpoint["critic2_target"])
+
+        # Update log_alpha and the current alpha value
+        self.log_alpha = torch.tensor(
+            checkpoint["log_alpha"],
+            dtype=torch.float32,
+            requires_grad=True,
+            device=self.device
+        )
+        self.alpha = self.log_alpha.exp().detach().item()
+
+        print("Checkpoint imported successfully.")
 
     def export_checkpoint(self) -> dict:
-        raise NotImplementedError
+        """
+        Exports the current model parameters to a checkpoint dictionary.
+        The returned dictionary contains the actor, critics, their target networks,
+        log_alpha, and optionally other bookkeeping information.
+        """
+        checkpoint = {
+            "actor": self.actor.state_dict(),
+            "critic1": self.critic1.state_dict(),
+            "critic2": self.critic2.state_dict(),
+            "critic1_target": self.critic1_target.state_dict(),
+            "critic2_target": self.critic2_target.state_dict(),
+            "log_alpha": self.log_alpha.detach().cpu().numpy(),
+        }
+        return checkpoint
