@@ -5,7 +5,7 @@ import torch
 from time import localtime, strftime
 
 from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
-    SMOOTH_L1_LOSS, TDMPC2_ALGO, HOCKEY, MPO_ALGO
+    SMOOTH_L1_LOSS, TDMPC2_ALGO
 
 _DEFAULT_OPTIMIZER = {
     "OPTIM_NAME": ADAM,  # Which optimizer to use
@@ -207,7 +207,7 @@ SETTINGS = {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
         "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
         "NOISE": _DEFAULT_NOISE,
-        "HORIZON": 3,  # How many steps do we want to consider while doing predictions
+        "HORIZON": 6,  # How many steps do we want to consider while doing predictions
         "MMPI_ITERATIONS": 6,
         "NUM_TRAJECTORIES": 8,
         "NUM_SAMPLES": 256,
