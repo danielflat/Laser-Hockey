@@ -15,9 +15,6 @@ from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, 
 from src.util.contract import initAgent, initEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics
 
-if not hasattr(np, 'bool8'):
-    np.bool8 = np.bool_ 
-
 """
 This is the main file of this project.
 Here, you can find the main training loop.
@@ -42,6 +39,8 @@ NUM_TEST_EPISODES = MAIN_SETTINGS["NUM_TEST_EPISODES"]
 EPISODE_UPDATE_ITER = MAIN_SETTINGS["EPISODE_UPDATE_ITER"]
 SHOW_PLOTS = MAIN_SETTINGS["SHOW_PLOTS"]
 CHECKPOINT_ITER = MAIN_SETTINGS["CHECKPOINT_ITER"]
+CHECKPOINT_NAME = MAIN_SETTINGS["CHECKPOINT_NAME"]
+
 BATCH_SIZE = AGENT_SETTINGS["BATCH_SIZE"]
 
 #
@@ -579,8 +578,8 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
         all_dones = []
         all_infos = []
 
-        # if we use self play, we want to play 9/10 times against the own agent
-        if self_opponent is not None and i_training % 10 != 0:
+        # if we use self play, we want to play 1/2 times against the own agent
+        if self_opponent is not None and i_training % 2 == 0:
             opponent = self_opponent
             opponent_name = USE_ALGO
         else:
@@ -710,7 +709,7 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
                 f" Opponent: {opponent_name} | {other_statistics}")
 
         # (Optional): After every 100 episodes ...
-        if i_training % 50 == 0:
+        if i_training % 5 == 0:
             # ... (Optional): If self play is activated, you update the self opponent with the current weights
             if SELF_PLAY:
                 self_opponent.import_checkpoint(agent.export_checkpoint())
@@ -830,6 +829,9 @@ def main():
 
     # Choose which algorithm to pick to initialize the agent
     agent = initAgent(USE_ALGO, env = env, device = DEVICE, agent_settings=AGENT_SETTINGS)
+    if CHECKPOINT_NAME is not None:
+        agent.loadModel(CHECKPOINT_NAME)
+
 
     # Init the memory
     memory = ReplayMemory(capacity = BUFFER_SIZE, device = DEVICE)
@@ -850,29 +852,29 @@ def main():
         random_agent = initAgent(use_algo = RANDOM_ALGO, env = env, device = DEVICE)
         weak_comp_agent = initAgent(use_algo = WEAK_COMP_ALGO, env = env, device = DEVICE)
         strong_comp_agent = initAgent(use_algo = STRONG_COMP_ALGO, env = env, device = DEVICE)
-        dqn_agent = initAgent(use_algo = DQN_ALGO, env = env, device = DEVICE)
-        ppo_agent = initAgent(use_algo = PPO_ALGO, env = env, device = DEVICE)
-        ddpg_agent = initAgent(use_algo = DDPG_ALGO, env = env, device = DEVICE)
-        td3_agent = initAgent(use_algo = TD3_ALGO, env = env, device = DEVICE)
-        sac_agent = initAgent(use_algo = SAC_ALGO, env = env, device = DEVICE)
-        mpo_agent = initAgent(use_algo = MPO_ALGO, env = env, device = DEVICE)
+        # dqn_agent = initAgent(use_algo = DQN_ALGO, env = env, device = DEVICE)
+        # ppo_agent = initAgent(use_algo = PPO_ALGO, env = env, device = DEVICE)
+        # ddpg_agent = initAgent(use_algo = DDPG_ALGO, env = env, device = DEVICE)
+        # td3_agent = initAgent(use_algo = TD3_ALGO, env = env, device = DEVICE)
+        # sac_agent = initAgent(use_algo = SAC_ALGO, env = env, device = DEVICE)
+        # mpo_agent = initAgent(use_algo = MPO_ALGO, env = env, device = DEVICE)
         # tdmpc2_agent = initAgent(use_algo = TDMPC2_ALGO, env = env, device = DEVICE)
 
         # Currently, we do not allow the opponent networks to train as well. This might be an extra feature
         random_agent.setMode(eval = True)
         weak_comp_agent.setMode(eval = True)
         strong_comp_agent.setMode(eval = True)
-        dqn_agent.setMode(eval = True)
-        ppo_agent.setMode(eval = True)
-        ddpg_agent.setMode(eval = True)
-        td3_agent.setMode(eval = True)
-        sac_agent.setMode(eval = True)
-        mpo_agent.setMode(eval = True)
+        # dqn_agent.setMode(eval = True)
+        # ppo_agent.setMode(eval = True)
+        # ddpg_agent.setMode(eval = True)
+        # td3_agent.setMode(eval = True)
+        # sac_agent.setMode(eval = True)
+        # mpo_agent.setMode(eval = True)
 
         opponent_pool = {
             RANDOM_ALGO: random_agent,
-            # WEAK_COMP_ALGO: weak_comp_agent,
-            # STRONG_COMP_ALGO: strong_comp_agent,
+            WEAK_COMP_ALGO: weak_comp_agent,
+            STRONG_COMP_ALGO: strong_comp_agent,
             # DQN_ALGO: dqn_agent,
             # PPO_ALGO: ppo_agent,
             # DDPG_ALGO: ddpg_agent,

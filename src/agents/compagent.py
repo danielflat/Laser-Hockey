@@ -21,7 +21,7 @@ class CompAgent(Agent):
         return f"CompAgent(is_Weak={self.is_Weak})"
 
     def act(self, state: torch.Tensor) -> np.ndarray:
-        return self.basic_opponent.act(state.numpy())
+        return self.basic_opponent.act(state.cpu().numpy())
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> None:
         # nothing to do

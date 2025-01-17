@@ -4,8 +4,9 @@ This is the config file for the training run main.py.
 import torch
 from time import localtime, strftime
 
-from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
+from src.util.constants import ADAM, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
+from src.util.directoryutil import get_path
 
 _DEFAULT_OPTIMIZER = {
     "OPTIM_NAME": ADAM,  # Which optimizer to use
@@ -30,28 +31,39 @@ _DEFAULT_NOISE = {
         "DT": 1e-2,
     }
 }
+# Convenient Constants
 SETTINGS = {
     # The settings for the main.py
     "MAIN": {
+        # General settings
         "SEED": 24,  # The seed that we want to use
         "DEVICE": torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # On which machine is it running?
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
+
+        # Environment settings
         "USE_ENV": PENDULUM,  # The used environment
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
-        "SELF_PLAY": False,  # If the agent should play against itself like in AlphaGo
+        "SELF_PLAY": True,  # If the agent should play against itself like in AlphaGo
         "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
+
+        # Defining training loop
         "BUFFER_SIZE": 1_000,  # How many items can be stored in the replay buffer?
-        "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
-        # under which name we want to store the logging results and the checkpoints
         "NUM_TRAINING_EPISODES": 10_000,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
         "SHOW_PLOTS": False,  # If you want to plot statistics after each episode
-        "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
         "CURIOSITY": None,  #Proportion of curiosity reward calculated by ICM to be added to the real reward. If None no curiosity exploration is used
+
+        # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
+        # e.g. "output/checkpoints/25-01-16 17_26_17/25-01-16 17_26_17_04200.pth"
+        "CHECKPOINT_NAME": get_path("output/checkpoints/25-01-16 17_26_17/25-01-16 17_26_17_04200.pth"),
+        "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
+        "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
+        # under which name we want to store the logging results and the checkpoints
+
     },
     # The settings for the agent.py
     "AGENT": {
@@ -227,7 +239,6 @@ SETTINGS = {
         "Q_COEF": 0.1,
     }
 }
-# Convenient Constants
 MAIN_SETTINGS = SETTINGS["MAIN"]
 AGENT_SETTINGS = SETTINGS["AGENT"]
 DQN_SETTINGS = SETTINGS["DQN"]
