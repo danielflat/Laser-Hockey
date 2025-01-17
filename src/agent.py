@@ -112,7 +112,7 @@ class Agent(ABC):
             raise NotImplementedError(
                 f"The epsilon decay strategy '{self.epsilon_decay_strategy}' is not supported! Please choose another one!")
 
-    def initOptim(self, optim: dict, parameters) -> torch.optim:
+    def initOptim(self, optim: dict, parameters, disable_weight_decay: bool = False) -> torch.optim:
         """
         Initialize the optimizer based on the config.py
         :param optim: the optim config
@@ -120,6 +120,7 @@ class Agent(ABC):
         :return: the optimizer
         """
         optim_name = optim["OPTIM_NAME"]
+        weight_decay = optim["WEIGHT_DECAY"] if not disable_weight_decay else 0.0
         if optim_name in SUPPORTED_OPTIMIZERS:
             if optim_name == ADAMW:
                 return torch.optim.AdamW(parameters, lr=optim["LEARNING_RATE"], betas=optim["BETAS"],

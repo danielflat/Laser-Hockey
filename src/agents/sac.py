@@ -193,9 +193,9 @@ class SoftActorCritic(Agent):
         alpha_optim_cfg = sac_settings["OPTIMIZER"]
 
         # Initialize optimizers
-        self.actor_optimizer = self.initOptim(actor_optim_cfg, self.actor.parameters())
-        self.critic1_optimizer = self.initOptim(critic_optim_cfg, self.critic1.parameters())
-        self.critic2_optimizer = self.initOptim(critic_optim_cfg, self.critic2.parameters())
+        self.actor_optimizer = self.initOptim(actor_optim_cfg, self.actor.parameters(), disable_weight_decay=True)
+        self.critic1_optimizer = self.initOptim(critic_optim_cfg, self.critic1.parameters(), disable_weight_decay=True)
+        self.critic2_optimizer = self.initOptim(critic_optim_cfg, self.critic2.parameters(), disable_weight_decay=True)
         if self.learn_alpha:
             self.alpha_optimizer = self.initOptim(alpha_optim_cfg, [self.log_alpha])
 
