@@ -438,10 +438,7 @@ class MPOAgent(Agent):
         #Inverse of the covariance matrices
         Σi_inv = Σi.inverse()  # (B, n, n)
         Σ_inv = Σ.inverse()  # (B, n, n)
-        
-        Σi_inv = Σi.inverse()  # (B, n, n)
-        Σ_inv = Σ.inverse()  # (B, n, n)
-
+    
         inner_μ = ((μ - μi).transpose(-2, -1) @ Σi_inv @ (μ - μi)).squeeze()  # (B,)
         inner_Σ = torch.log(Σ_det / Σi_det) - n + btr(Σ_inv @ Σi) # (B,)
         
@@ -527,7 +524,7 @@ class MPOAgent(Agent):
             # Sample from replay buffer, dimensions (K, ds), (K, da), (K,), (K, ds) 
             states, actions, rewards, next_states, dones, _ = memory.sample(batch_size=self.batch_size, randomly=True)
             # Train the curiosity module 
-            #self.icm.train(states, next_states, actions)
+            # self.icm.train(states, next_states, actions)
             
             # 1: Policy Evaluation: Update Critic (Q-function)
             loss_critic, q_estimates = self.critic_update(states, actions, dones, next_states, rewards, N)
@@ -591,9 +588,8 @@ class MPOAgent(Agent):
                     #η_μ_kl_np = self.η_μ_kl.detach().item()
                     #η_Σ_kl_np = self.η_Σ_kl.detach().item()
                     
-                    
-                    self.η_μ_kl -= 10 * (self.ε_kl_μ - kl_μ).detach().item()
-                    self.η_Σ_kl -= 10 * (self.ε_kl_Σ - kl_Σ).detach().item()
+                    self.η_μ_kl -= 1 * (self.ε_kl_μ - kl_μ).detach().item()
+                    self.η_Σ_kl -= 100 * (self.ε_kl_Σ - kl_Σ).detach().item()
                     
                     self.η_μ_kl = np.clip(self.η_μ_kl, 0.0, self.α_μ_max)
                     self.η_Σ_kl = np.clip(self.η_Σ_kl, 0.0, self.α_Σ_max)
@@ -669,7 +665,7 @@ class MPOAgent(Agent):
             "Langragian_Σ": self.η_Σ_kl,
             "Dual Variable": self.η,
         }
-        return losses
+        return sum_up_stats
     
     def setMode(self, eval: bool = False) -> None:
         """
