@@ -1,12 +1,11 @@
-import logging
-import os
-from abc import ABC, abstractmethod
-from typing import List
-
 import gymnasium
+import logging
 import numpy as np
+import os
 import torch
+from abc import ABC, abstractmethod
 from torch import nn
+from typing import List
 
 from src.replaymemory import ReplayMemory
 from src.util.constants import ADAM, ADAMW, CROSS_ENTROPY_LOSS, EXPONENTIAL, L1_LOSS, LINEAR, MSE_LOSS, SMOOTH_L1_LOSS, \
@@ -67,7 +66,7 @@ class Agent(ABC):
         checkpoint = self.export_checkpoint()
 
         directory = get_path(f"output/checkpoints/{model_name}")
-        file_path = os.path.join(directory, f"{model_name}_{iteration:05}.pth")
+        file_path = os.path.join(directory, f"{model_name}_{iteration:09}.pth")
 
         # Ensure the directory exists
         os.makedirs(directory, exist_ok = True)
