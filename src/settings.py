@@ -4,7 +4,7 @@ This is the config file for the training run main.py.
 import torch
 from time import localtime, strftime
 
-from src.util.constants import ADAM, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
+from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
 from src.util.directoryutil import get_path
 
@@ -58,8 +58,8 @@ SETTINGS = {
         "CURIOSITY": None,  #Proportion of curiosity reward calculated by ICM to be added to the real reward. If None no curiosity exploration is used
 
         # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
-        # e.g. "output/checkpoints/25-01-16 17_26_17/25-01-16 17_26_17_04200.pth"
-        "CHECKPOINT_NAME": get_path("output/checkpoints/25-01-16 17_26_17/25-01-16 17_26_17_04200.pth"),
+        # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
+        "CHECKPOINT_NAME": get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth"),
         "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints

@@ -8,9 +8,8 @@ from itertools import count
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
-from src.settings import MAIN_SETTINGS, AGENT_SETTINGS, SETTINGS
-from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
-    TD3_ALGO, \
+from src.settings import AGENT_SETTINGS, MAIN_SETTINGS, SETTINGS
+from src.util.constants import HOCKEY, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
     TDMPC2_ALGO, WEAK_COMP_ALGO
 from src.util.contract import initAgent, initEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics
@@ -829,9 +828,6 @@ def main():
 
     # Choose which algorithm to pick to initialize the agent
     agent = initAgent(USE_ALGO, env = env, device = DEVICE, agent_settings=AGENT_SETTINGS)
-    if CHECKPOINT_NAME is not None:
-        agent.loadModel(CHECKPOINT_NAME)
-
 
     # Init the memory
     memory = ReplayMemory(capacity = BUFFER_SIZE, device = DEVICE)
@@ -842,11 +838,13 @@ def main():
     # Log the settings.py such that we can save the settings under which we did the training
     logging.info(yaml.dump(SETTINGS, default_flow_style = False, sort_keys = False, allow_unicode = True))
 
-    # Training loop
-    logging.info(f"The configuration was valid! Start training 💪")
+    # Setup agent for training
     agent.setMode(eval = False)  # Set the agent in training mode
+    if CHECKPOINT_NAME is not None:
+        agent.loadModel(CHECKPOINT_NAME)
+    logging.info(f"The configuration was valid! Start training 💪")
 
-    # If we play Hockey, our training loop is different, because we use self play to train our agent
+    # Training loop
     if USE_ENV == HOCKEY:
         # Only in the Hockey env, we need some opponent_pool to play against
         random_agent = initAgent(use_algo = RANDOM_ALGO, env = env, device = DEVICE)
