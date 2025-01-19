@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import gymnasium
 import logging
-import numpy
 import numpy as np
 import torch
 from sympy import false
@@ -307,14 +306,14 @@ class TDMPC2Agent(Agent, nn.Module):
         # We sum up the statistics from each optimization iteration by accumulating statistical quantities
         # such that we can log it
         sum_up_statistics_training_iter = {
-            "Avg. Total Loss": numpy.array([episode["total_loss"] for episode in statistics_episode]).mean(),
-            "Avg. Policy Loss": numpy.array([episode["policy_loss"] for episode in statistics_episode]).mean(),
-            "Avg. Consistency Loss": numpy.array(
+            "Avg. Total Loss": np.array([episode["total_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Policy Loss": np.array([episode["policy_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Consistency Loss": np.array(
                 [episode["consistency_loss"] for episode in statistics_episode]).mean(),
-            "Avg. Reward Loss": numpy.array([episode["reward_loss"] for episode in statistics_episode]).mean(),
-            "Avg. Q Loss": numpy.array([episode["q_loss"] for episode in statistics_episode]).mean(),
-            "Avg. Total Grad Norm": numpy.array([episode["total_grad_norm"] for episode in statistics_episode]).mean(),
-            "Avg. Policy Grad Norm": numpy.array(
+            "Avg. Reward Loss": np.array([episode["reward_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Q Loss": np.array([episode["q_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Total Grad Norm": np.array([episode["total_grad_norm"] for episode in statistics_episode]).mean(),
+            "Avg. Policy Grad Norm": np.array(
                 [episode["policy_grad_norm"] for episode in statistics_episode]).mean(),
         }
 

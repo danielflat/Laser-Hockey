@@ -8,10 +8,12 @@ from itertools import count
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
-from src.settings import MAIN_SETTINGS, AGENT_SETTINGS, SETTINGS
+from src.settings import AGENT_SETTINGS, DDPG_SETTINGS, DQN_SETTINGS, MAIN_SETTINGS, MPO_SETTINGS, PPO_SETTINGS, \
+    SAC_SETTINGS, \
+    SETTINGS, \
+    TD3_SETTINGS, TD_MPC2_SETTINGS
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
-    TD3_ALGO, \
-    TDMPC2_ALGO, WEAK_COMP_ALGO
+    TD3_ALGO, TDMPC2_ALGO, WEAK_COMP_ALGO, MPO_ALGO
 from src.util.contract import initAgent, initEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics, plot_sac_training_metrics
 
@@ -40,6 +42,8 @@ NUM_TEST_EPISODES = MAIN_SETTINGS["NUM_TEST_EPISODES"]
 EPISODE_UPDATE_ITER = MAIN_SETTINGS["EPISODE_UPDATE_ITER"]
 SHOW_PLOTS = MAIN_SETTINGS["SHOW_PLOTS"]
 CHECKPOINT_ITER = MAIN_SETTINGS["CHECKPOINT_ITER"]
+CHECKPOINT_NAME = MAIN_SETTINGS["CHECKPOINT_NAME"]
+CURIOSITY = MAIN_SETTINGS["CURIOSITY"]
 BATCH_SIZE = AGENT_SETTINGS["BATCH_SIZE"]
 
 #
@@ -112,7 +116,7 @@ def do_other_env_training(env, agent, memory):
             reward = torch.tensor(reward, device = DEVICE, dtype = torch.float32)
             done = torch.tensor(terminated or truncated, device = DEVICE,
                                 dtype = torch.int)  # to be able to do arithmetics with the done signal, we need an int
-            next_state = torch.from_numpy(next_state).to(device = DEVICE)
+            next_state = torch.from_numpy(next_state).to(device = DEVICE, dtype = torch.float32)
 
             # Store this transition in the memory
             memory.push(state, action, reward, next_state, done, info)
@@ -402,6 +406,121 @@ def do_hockey_training(env, agent, memory, opponent_pool: dict):
         if (i_training % CHECKPOINT_ITER == 0):
             agent.saveModel(MODEL_NAME, i_training)
 
+def do_mpo_hockey_training(env, agent, memory, opponent_pool: dict, self_opponent: Agent):
+    """
+    TODO: Add support for discrete action spaces
+    """
+    episode_durations, episode_rewards, training_statistics = [], [], []
+
+    # Initialize statistics
+    self_statistics = {
+        "WIN_RATE": 0.5, "DRAW_RATE": 0.0, "LOSE_RATE": 0.5,
+        "NUM_GAMES": 0, "NUM_GAMES_WIN": 0, "NUM_GAMES_DRAW": 0, "NUM_GAMES_LOSE": 0,
+    } if SELF_PLAY else None
+
+    opponent_statistics = {
+        opponent: {
+            "WIN_RATE": 0.5, "DRAW_RATE": 0.0, "LOSE_RATE": 0.5,
+            "NUM_GAMES": 0, "NUM_GAMES_WIN": 0, "NUM_GAMES_DRAW": 0, "NUM_GAMES_LOSE": 0,
+        }
+        for opponent in opponent_pool.keys()
+    }
+
+    # Training loop
+    for episode in range(1, NUM_TRAINING_EPISODES + 1):
+        # Start the episode
+        start_time = time.time()
+        total_reward, steps = 0, 0
+
+        # Select self opponent in 1/2 of the cases
+        if self_opponent and episode % 2 == 0:
+            opponent, opponent_name = self_opponent, USE_ALGO
+        # Select opponent based on win rates
+        else:
+            win_rates = {key: 1 - abs(0.5 - val["WIN_RATE"]) for key, val in opponent_statistics.items()}
+            opponent_name = random.choices(list(opponent_pool.keys()), weights=win_rates.values())[0]
+            opponent = opponent_pool[opponent_name]
+
+        # Reset environment
+        state, info = env.reset(seed=SEED + episode - 1)
+        state = torch.tensor(state, device=DEVICE, dtype=torch.float32)
+        state_opponent = torch.tensor(env.obs_agent_two(), device=DEVICE, dtype=torch.float32)
+
+        while True:
+            # Perform actions
+            action = agent.act(state)
+            action_opponent = opponent.act(state_opponent)
+            next_state, reward, terminated, truncated, info = env.step(np.hstack([action, action_opponent]))
+            next_state_opponent = env.obs_agent_two()
+            done = terminated or truncated
+
+            # Track rewards and push to memory
+            total_reward += reward
+
+            # Convert quantities into tensors
+            action = torch.tensor(action, device = DEVICE, dtype = torch.float32)
+            action_opponent = torch.tensor(action_opponent, device = DEVICE, dtype = torch.float32)
+            reward = torch.tensor(reward, device = DEVICE, dtype = torch.float32)
+            done = torch.tensor(terminated or truncated, device = DEVICE, dtype = torch.int)
+            next_state = torch.tensor(next_state, device = DEVICE, dtype = torch.float32)
+            next_state_opponent = torch.tensor(next_state_opponent, device = DEVICE, dtype = torch.float32)
+
+            # Add intrinsic reward if curiosity is enabled
+            if CURIOSITY is not None:
+                reward = reward + CURIOSITY * agent.icm.compute_intrinsic_reward(state, next_state, action)
+
+            # Store transitions
+            memory.push(state, action, reward, next_state, done, info)
+
+            # Update states
+            state, state_opponent = (next_state, next_state_opponent)
+
+            steps += 1
+            if done:
+                break
+
+        # Update statistics
+        stat_entry = self_statistics if SELF_PLAY and opponent_name == USE_ALGO else opponent_statistics[opponent_name]
+        stat_entry["NUM_GAMES"] += 1
+        if info["winner"] == 1:
+            stat_entry["NUM_GAMES_WIN"] += 1
+        elif info["winner"] == -1:
+            stat_entry["NUM_GAMES_LOSE"] += 1
+        else:
+            stat_entry["NUM_GAMES_DRAW"] += 1
+        stat_entry["WIN_RATE"] = stat_entry["NUM_GAMES_WIN"] / stat_entry["NUM_GAMES"]
+        stat_entry["DRAW_RATE"] = stat_entry["NUM_GAMES_DRAW"] / stat_entry["NUM_GAMES"]
+        stat_entry["LOSE_RATE"] = stat_entry["NUM_GAMES_LOSE"] / stat_entry["NUM_GAMES"]
+
+        # Log episode statistics
+        episode_durations.append(steps)
+        episode_rewards.append(total_reward)
+        if episode % EPISODE_UPDATE_ITER == 0:
+            training_stats = agent.optimize(memory=memory, episode_i=episode)
+            training_statistics.append(training_stats)
+            duration = time.time() - start_time
+            logging.info(
+                f"Episode: {episode} | Time: {duration:.2f}s | Steps: {steps} | Reward: {total_reward:.2f} | Winner: {info['winner']} |"
+                f"Opponent: {opponent_name} | Stats: {', '.join(f'{k}: {v:.4f}' for k, v in training_stats.items())}"
+            )
+
+        # Periodic updates of self-play opponent and logging of statistics
+        if episode % 10 == 0:
+            if SELF_PLAY:
+                self_opponent.import_checkpoint(agent.export_checkpoint())
+                logging.info(f"Episode {episode}: Updated self-play opponent.")
+            all_stats = {USE_ALGO: self_statistics} if SELF_PLAY else {}
+            all_stats.update(opponent_statistics)
+            formatted_stats = "\n".join(
+                f"{name}: " + ", ".join(f"{stat}: {val:.4f}" for stat, val in stats.items())
+                for name, stats in all_stats.items()
+            )
+            logging.info(f"Statistics at Episode {episode}:\n{formatted_stats}")
+
+        #Save checkpoints
+        if episode % CHECKPOINT_ITER == 0:
+            agent.saveModel(MODEL_NAME, episode)
+
 def warmup_sac_hockey(env, memory, min_buffer_size=int(0.25 * BUFFER_SIZE), action_dim=4):
     """
     Collect random transitions until the replay buffer has at least `min_buffer_size` entries.
@@ -673,8 +792,8 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
         all_dones = []
         all_infos = []
 
-        # if we use self play, we want to play 9/10 times against the own agent
-        if self_opponent is not None and i_training % 10 != 0:
+        # if we use self play, we want to play 1/2 times against the own agent
+        if self_opponent is not None and i_training % 2 == 0:
             opponent = self_opponent
             opponent_name = USE_ALGO
         else:
@@ -698,7 +817,7 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
         for step in count(start = 1):
             # Render the scene
             env.render(mode = RENDER_MODE)
-            # env.render(mode = "human")  # for debugging
+            # env.render(mode = HUMAN if i_training % 10 == 0 else None)  # for debugging
 
             # choose the action
             action = agent.act(state)
@@ -804,7 +923,7 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
                 f" Opponent: {opponent_name} | {other_statistics}")
 
         # (Optional): After every 100 episodes ...
-        if i_training % 50 == 0:
+        if i_training % 5 == 0:
             # ... (Optional): If self play is activated, you update the self opponent with the current weights
             if SELF_PLAY:
                 self_opponent.import_checkpoint(agent.export_checkpoint())
@@ -840,30 +959,52 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
             agent.saveModel(MODEL_NAME, i_training)
 
 
-def do_multiple_testing(env, agent, opponent_pool):
+def do_hockey_testing(env, agent, opponent_pool: dict):
     episode_durations = []
     episode_rewards = []
-    episode_losses = []
-    episode_epsilon = []
-    win_rates = {opponent: 0.5 for opponent in opponent_pool}  # Start with 50% win rate for each opponent
 
-    for i_test in range(1, NUM_TRAINING_EPISODES + 1):
+    # create a dict for each opponent and save some statistics there
+    opponent_statistics = {
+        f"{opponent}": {
+            # has to sum up to 1
+            "WIN_RATE": 0.5,  # Start with 50% win rate for each opponent
+            "DRAW_RATE": 0.0,
+            "LOSE_RATE": 0.5,
+
+            # Currently it is not used so much. But an interesting quantity to log with us
+            "NUM_GAMES": 0,
+
+            # has to sum up to "NUM_GAMES"
+            "NUM_GAMES_WIN": 0,
+            "NUM_GAMES_DRAW": 0,
+            "NUM_GAMES_LOSE": 0,
+        }
+        for opponent in opponent_pool.keys()
+    }
+
+    for i_test in range(1, NUM_TEST_EPISODES + 1):
         # We track for each episode how high the reward was
+        t_start = time.time()
         total_reward = 0
 
-        # Select an opponent based on win rates (e.g., preference for challenging opponents)
-        opponent = random.choices(opponent_pool, weights = [1 - abs(0.5 - win_rates[o]) for o in opponent_pool])[0]
+        # Select an opponent based on win rates. Currently, it prefers sampling winning rates ~0.5
+        # example 1: win_rate = 0.8 -> 1 - abs(0.5 - 0.8) = 1 - 0.3 = 0.7
+        # example 2: win_rate = 0.5 -> 1 - abs(0.5 - 0.5) = 1 - 0.0 = 1.0 -> preferred opponent
+        # example 3: win_rate = 0.1 -> 1 - abs(0.5 - 0.1) = 1 - 0.4 = 0.6
+        opponent_name = list(opponent_pool.keys())[i_test % len(opponent_pool)]
+        opponent = opponent_pool[opponent_name]
 
-        # We reset the environment
-        state, info = env.reset()
+        # For reproducibility of the training, we use predefined seeds
+        state, info = env.reset(seed = SEED + i_test - 1)
         state_opponent = env.obs_agent_two()
         # Convert state to torch
         state = torch.tensor(state, device = DEVICE, dtype = torch.float32)
         state_opponent = torch.tensor(state_opponent, device = DEVICE, dtype = torch.float32)
 
         for step in count(start = 1):
-            # Render the scene every 10th episode
-            # env.render(mode = "human" if i_test % 10 == 0 else None)
+            # Render the scene
+            env.render(mode = RENDER_MODE)
+            # env.render(mode = HUMAN if i_test % 10 == 0 else None)  # for debugging
 
             # choose the action
             action = agent.act(state)
@@ -874,41 +1015,73 @@ def do_multiple_testing(env, agent, opponent_pool):
             next_state_opponent = env.obs_agent_two()
 
             # df: Sometimes, the reward yields small numbers because in the env, they also consider the distance to the puck.
-            # In my suggestion, this is not a good thing to do because it sets an unnecessary prior to the model.
+            # In my suggestion, this is not a good thing to do because it sets an unnecessary target to the model.
             # Therefore, we normalize it to 0 for simplicity.
-            if info["winner"] == 1:
-                reward = 10
-            elif info["winner"] == -1:
-                reward = -10
-            else:
-                reward = 0
+            # if info["winner"] == 1:
+            #     reward = 10
+            # elif info["winner"] == -1:
+            #     reward = -10
+            # else:
+            #     reward = 0
 
             # track the total reward
             total_reward += reward
 
             # Convert quantities into tensors
-            action = torch.tensor(action, device = DEVICE, dtype = torch.float32)
-            action_opponent = torch.tensor(action_opponent, device = DEVICE, dtype = torch.float32)
-            reward = torch.tensor(reward, device = DEVICE, dtype = torch.float32)
             done = torch.tensor(terminated or truncated, device = DEVICE,
                                 dtype = torch.int)  # to be able to do arithmetics with the done signal, we need an int
             next_state = torch.tensor(next_state, device = DEVICE, dtype = torch.float32)
             next_state_opponent = torch.tensor(next_state_opponent, device = DEVICE, dtype = torch.float32)
 
-            # Store this transition in the memory
-
             # Update the state
             state = next_state
             state_opponent = next_state_opponent
 
+            # When this episode is over...
             if done:
-                # If this transition is the last, safe the number of done steps in the env. and end this episode
+                # ... Step 01: we save some statistics
                 episode_durations.append(step)
                 episode_rewards.append(total_reward)
-                logging.info(f"Test Iter: {i_test} | Req. Steps: {step} | Total reward: {total_reward}")
+
+                # ... Step 02: update the statistics against the opponent
+                opponent_stat_entry = opponent_statistics[opponent_name]
+                opponent_stat_entry["NUM_GAMES"] += 1
+                if info["winner"] == 1:
+                    opponent_stat_entry["NUM_GAMES_WIN"] += 1
+                elif info["winner"] == -1:
+                    opponent_stat_entry["NUM_GAMES_LOSE"] += 1
+                else:
+                    opponent_stat_entry["NUM_GAMES_DRAW"] += 1
+                opponent_stat_entry["WIN_RATE"] = opponent_stat_entry[
+                                                      "NUM_GAMES_WIN"] / \
+                                                  opponent_stat_entry["NUM_GAMES"]
+                opponent_stat_entry["DRAW_RATE"] = opponent_stat_entry[
+                                                       "NUM_GAMES_DRAW"] / \
+                                                   opponent_stat_entry["NUM_GAMES"]
+                opponent_stat_entry["LOSE_RATE"] = opponent_stat_entry[
+                                                       "NUM_GAMES_LOSE"] / \
+                                                   opponent_stat_entry["NUM_GAMES"]
+
+                # ... Step 03: end this episode
                 break
 
-    return episode_durations, episode_rewards
+        t_end = time.time()
+        episode_time = t_end - t_start
+        logging.info(
+            f"Test Iter: {i_test} | Req. Time: {episode_time:.4f} sec. | Req. Steps: {episode_durations[i_test - 1]} | Total reward: {total_reward:.4f} |"
+            f" Opponent: {opponent_name}")
+
+        if i_test % 10 == 0:
+            # ... You log the battle statistics of each opponent
+            battle_statistics = " |\n".join([
+                f'"{key}": {{' + ", ".join(
+                    f'"{stat_name}": {stat_value:.4f}' if isinstance(stat_value,
+                                                                     float) else f'"{stat_name}": {stat_value}'
+                    for stat_name, stat_value in values.items()
+                ) + "}"
+                for key, values in opponent_statistics.items()])
+
+            logging.info(f"Test Iter: {i_test} | {battle_statistics}")
 
 
 def main():
@@ -919,80 +1092,88 @@ def main():
     if USE_TF32:
         torch.set_float32_matmul_precision("high")
 
-    # Initialize the environment
-    env = initEnv(USE_ENV, RENDER_MODE, NUMBER_DISCRETE_ACTIONS, PROXY_REWARDS)
-
-    # Choose which algorithm to pick to initialize the agent
-    agent = initAgent(USE_ALGO, env = env, device = DEVICE, agent_settings=AGENT_SETTINGS)
-
-    # Init the memory
-    memory = ReplayMemory(capacity = BUFFER_SIZE, device = DEVICE)
-
     # Setup Logging
     setupLogging(model_name = MODEL_NAME)
 
     # Log the settings.py such that we can save the settings under which we did the training
     logging.info(yaml.dump(SETTINGS, default_flow_style = False, sort_keys = False, allow_unicode = True))
 
+    # Initialize the environment
+    env = initEnv(USE_ENV, RENDER_MODE, NUMBER_DISCRETE_ACTIONS, PROXY_REWARDS)
+
+    # Choose which algorithm to pick to initialize the agent
+    agent = initAgent(USE_ALGO, env = env, device = DEVICE, agent_settings = AGENT_SETTINGS,
+                      checkpoint_name = CHECKPOINT_NAME)
+
+    # Init the memory
+    memory = ReplayMemory(capacity = BUFFER_SIZE, device = DEVICE)
+
     # Training loop
-    logging.info(f"The configuration was valid! Start training 💪")
     agent.setMode(eval = False)  # Set the agent in training mode
+    logging.info(f"The configuration was valid! Start training 💪")
+
+    opponent_pool = None
+    self_opponent = None
 
     # If we play Hockey, our training loop is different, because we use self play to train our agent
     if USE_ENV == HOCKEY:
         # Only in the Hockey env, we need some opponent_pool to play against
-        random_agent = initAgent(use_algo = RANDOM_ALGO, env = env, device = DEVICE)
-        weak_comp_agent = initAgent(use_algo = WEAK_COMP_ALGO, env = env, device = DEVICE)
-        strong_comp_agent = initAgent(use_algo = STRONG_COMP_ALGO, env = env, device = DEVICE)
-        dqn_agent = initAgent(use_algo = DQN_ALGO, env = env, device = DEVICE)
-        ppo_agent = initAgent(use_algo = PPO_ALGO, env = env, device = DEVICE)
-        ddpg_agent = initAgent(use_algo = DDPG_ALGO, env = env, device = DEVICE)
-        td3_agent = initAgent(use_algo = TD3_ALGO, env = env, device = DEVICE)
-        sac_agent = initAgent(use_algo = SAC_ALGO, env = env, device = DEVICE)
-        mpo_agent = initAgent(use_algo = MPO_ALGO, env = env, device = DEVICE)
-        # tdmpc2_agent = initAgent(use_algo = TDMPC2_ALGO, env = env, device = DEVICE)
+        random_agent = initAgent(use_algo = RANDOM_ALGO, env = env, device = DEVICE, checkpoint_name = None)
+        weak_comp_agent = initAgent(use_algo = WEAK_COMP_ALGO, env = env, device = DEVICE, checkpoint_name = None)
+        strong_comp_agent = initAgent(use_algo = STRONG_COMP_ALGO, env = env, device = DEVICE, checkpoint_name = None)
+        # dqn_agent = initAgent(use_algo = DQN_ALGO, env = env, device = DEVICE, checkpoint_name = DQN_SETTINGS["CHECKPOINT_NAME"])
+        # ppo_agent = initAgent(use_algo = PPO_ALGO, env = env, device = DEVICE, checkpoint_name = PPO_SETTINGS["CHECKPOINT_NAME"])
+        # ddpg_agent = initAgent(use_algo = DDPG_ALGO, env = env, device = DEVICE, checkpoint_name = DDPG_SETTINGS["CHECKPOINT_NAME"])
+        # td3_agent = initAgent(use_algo = TD3_ALGO, env = env, device = DEVICE, checkpoint_name = TD3_SETTINGS["CHECKPOINT_NAME"])
+        # sac_agent = initAgent(use_algo = SAC_ALGO, env = env, device = DEVICE, checkpoint_name = SAC_SETTINGS["CHECKPOINT_NAME"])
+        # mpo_agent = initAgent(use_algo = MPO_ALGO, env = env, device = DEVICE, checkpoint_name = MPO_SETTINGS["CHECKPOINT_NAME"])
+        # tdmpc2_agent = initAgent(use_algo = TDMPC2_ALGO, env = env, device = DEVICE, checkpoint_name = TD_MPC2_SETTINGS["CHECKPOINT_NAME"])
 
         # Currently, we do not allow the opponent networks to train as well. This might be an extra feature
         random_agent.setMode(eval = True)
         weak_comp_agent.setMode(eval = True)
         strong_comp_agent.setMode(eval = True)
-        dqn_agent.setMode(eval = True)
-        ppo_agent.setMode(eval = True)
-        ddpg_agent.setMode(eval = True)
-        td3_agent.setMode(eval = True)
-        sac_agent.setMode(eval = True)
-        mpo_agent.setMode(eval = True)
+        # dqn_agent.setMode(eval = True)
+        # ppo_agent.setMode(eval = True)
+        # ddpg_agent.setMode(eval = True)
+        # td3_agent.setMode(eval = True)
+        # sac_agent.setMode(eval = True)
+        # mpo_agent.setMode(eval = True)
+        # tdmpc2_agent.setMode(eval = True)
 
         opponent_pool = {
             RANDOM_ALGO: random_agent,
-            # WEAK_COMP_ALGO: weak_comp_agent,
-            # STRONG_COMP_ALGO: strong_comp_agent,
+            WEAK_COMP_ALGO: weak_comp_agent,
+            STRONG_COMP_ALGO: strong_comp_agent,
             # DQN_ALGO: dqn_agent,
             # PPO_ALGO: ppo_agent,
             # DDPG_ALGO: ddpg_agent,
             # TD3_ALGO: td3_agent,
             # SAC_ALGO: sac_agent,
             # MPO_ALGO: mpo_agent,
+            # TDMPC2_ALGO: mpo_agent,
         }
 
+        # if you want to use self-play, we have to init the self opponent agent
         if SELF_PLAY:
-            self_opponent = initAgent(use_algo = USE_ALGO, env = env, device = DEVICE)
+            self_opponent = initAgent(use_algo = USE_ALGO, env = env, device = DEVICE, checkpoint_name = None)
             self_opponent.setMode(eval = True)
             self_opponent.import_checkpoint(agent.export_checkpoint())
-        else:
-            self_opponent = None
 
-        if USE_ALGO == TDMPC2_ALGO:
+        if USE_ALGO == TDMPC2_ALGO or USE_ALGO == DDPG_ALGO:
             do_tdmpc2_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool,
                                       self_opponent = self_opponent)
         elif USE_ALGO == SAC_ALGO:
             do_sac_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool)
+        elif USE_ALGO == MPO_ALGO:
+            do_mpo_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool,
+                                   self_opponent = self_opponent)
         else:
             do_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool)
 
     # If you use another env (e.g. Pendulum), train normally
     else:
-        if USE_ALGO == TDMPC2_ALGO:
+        if USE_ALGO == TDMPC2_ALGO or USE_ALGO == DDPG_ALGO:
             do_tdmpc2agent_other_env_training(env = env, agent = agent, memory = memory)
         else:
             do_other_env_training(env = env, agent = agent, memory = memory)
@@ -1002,8 +1183,9 @@ def main():
     agent.setMode(eval = True)  # Set the agent in eval mode
 
     if USE_ENV == HOCKEY:
-        ...
-        # test_durations, test_rewards = do_multiple_testing(env = env, agent = agent, opponent_pool = opponent_pool)
+        if SELF_PLAY:
+            opponent_pool[USE_ALGO] = self_opponent
+        do_hockey_testing(env = env, agent = agent, opponent_pool = opponent_pool)
     else:
         do_other_env_testing(env = env, agent = agent)
     logging.info(f"Finished! 🚀")

@@ -4,7 +4,7 @@ This is the config file for the training run main.py.
 import torch
 from time import localtime, strftime
 
-from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
+from src.util.constants import ADAM, DDPG_ALGO, DQN_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO, SAC_ALGO, HOCKEY, HUMAN
 
 _DEFAULT_OPTIMIZER = {
@@ -30,9 +30,11 @@ _DEFAULT_NOISE = {
         "DT": 1e-2,
     }
 }
+# Convenient Constants
 SETTINGS = {
     # The settings for the main.py
     "MAIN": {
+        # General settings
         "SEED": 24,  # The seed that we want to use
         "DEVICE": torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # On which machine is it running?
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
@@ -47,12 +49,19 @@ SETTINGS = {
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
         "NUM_TRAINING_EPISODES": 10_000,  # How many training episodes should be run?
-        "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
+        "NUM_TEST_EPISODES": 1_000,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
         "SHOW_PLOTS": False,  # If you want to plot statistics after each episode
-        "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
         "CURIOSITY": None,  #Proportion of curiosity reward calculated by ICM to be added to the real reward. If None no curiosity exploration is used
+
+        # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
+        # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
+        "CHECKPOINT_NAME": None,
+        "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
+        "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
+        # under which name we want to store the logging results and the checkpoints
+
     },
     # The settings for the agent.py
     "AGENT": {
@@ -90,12 +99,14 @@ SETTINGS = {
     "DQN": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
         "LOSS_FUNCTION": SMOOTH_L1_LOSS,
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the DQN Hockey agent?
     },
     # The specific settings for the PPO agent
     "PPO": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
         "LOSS_FUNCTION": MSE_LOSS,
         "EPS_CLIP": 0.2,  # the clipping hyperparam for the ppo algo
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the PPO Hockey agent?
     },
     # The specific settings for the DDPG agent
     "DDPG": {
@@ -125,7 +136,7 @@ SETTINGS = {
             "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
         "NOISE": _DEFAULT_NOISE,
-
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the DDPG Hockey agent?
     },
     # The specific settings for the TD3 agent
     "TD3": {
@@ -156,7 +167,8 @@ SETTINGS = {
         "HIDDEN_DIM": 128,
         "NUM_LAYERS": 5, #num hidden layers, only changed if target_net == false
         "BATCHNORM_MOMENTUM": 0.9, #momentum for batchnorm, only used if target_net == false
-        "NOISE": _DEFAULT_NOISE
+        "NOISE": _DEFAULT_NOISE,
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the TD3 Hockey agent?
     },
     "SAC": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
@@ -164,7 +176,8 @@ SETTINGS = {
         "LEARN_ALPHA": True,  # Whether to learn the temperature alpha
         "TARGET_ENTROPY": None,  # Target entropy for automatic alpha
         "INIT_ALPHA": 0.2,
-        "HIDDEN_DIM": 256
+        "HIDDEN_DIM": 256,
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the SAC Hockey agent?
     },
     "MPO": {
         "ACTOR": {
@@ -201,8 +214,9 @@ SETTINGS = {
         },
         "SAMPLE_ACTION_NUM": 32,  # Number of actions to sample for nonparametric policy optimization
         "MSTEP_ITER": 1,
-        "DISCRETE": False
+        "DISCRETE": False,
         # All other Hyperparameters are set in the MPO class
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the PPO Hockey agent?
     },
     "TD_MPC2": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
@@ -226,9 +240,9 @@ SETTINGS = {
         "CONSISTENCY_COEF": 20,
         "REWARD_COEF": 0.1,
         "Q_COEF": 0.1,
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the TD-MPC-2 Hockey agent?
     }
 }
-# Convenient Constants
 MAIN_SETTINGS = SETTINGS["MAIN"]
 AGENT_SETTINGS = SETTINGS["AGENT"]
 DQN_SETTINGS = SETTINGS["DQN"]
