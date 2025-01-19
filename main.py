@@ -663,7 +663,6 @@ def do_sac_hockey_training(env, agent, memory, opponent_pool: dict):
                 state_opponent = next_state_opponent_t
 
                 if done:
-                    print(f"[REWARD] {episode_reward}")
                     epoch_durations.append(step)
                     break
 
