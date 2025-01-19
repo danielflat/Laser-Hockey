@@ -36,7 +36,6 @@ from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, 
 from src.util.directoryutil import get_path
 from src.util.discreteactionmapper import DiscreteActionWrapper
 
-
 def initSeed(seed: int | None, device: device):
     if seed is not None:
         torch.manual_seed(seed)
@@ -47,14 +46,14 @@ def initSeed(seed: int | None, device: device):
         logging.warning("No seed was set!")
 
 
-def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int):
+def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int, proxy_rewards: bool = False):
     if use_env not in SUPPORTED_ENVIRONMENTS:
         raise Exception(f"The environment '{use_env}' is not supported! Please choose another one!")
     if render_mode not in SUPPORTED_RENDER_MODES:
         raise Exception(f"The render mode '{render_mode}' is not supported! Please choose another one!")
 
     if use_env == HOCKEY:
-        env = h_env.HockeyEnv()
+        env = h_env.HockeyEnv(proxy_rewards=proxy_rewards)
     else:
         env = gymnasium.make(use_env, render_mode = render_mode)
 
@@ -64,6 +63,10 @@ def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int)
 
     return env
 
+def initValEnv():
+    env = h_env.HockeyEnv_BasicOpponent(weak_opponent=True)
+
+    return env
 
 def initAgent(use_algo: str, env, device: device,
               checkpoint_name: str | None,

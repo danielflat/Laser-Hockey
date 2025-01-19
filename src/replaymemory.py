@@ -1,11 +1,7 @@
 from collections import deque
-
-import logging
 import random
+import numpy as np
 import torch
-from torch import Tensor
-from typing import Any, List, Tuple
-
 
 class ReplayMemory:
     def __init__(self, capacity, device: torch.device) -> None:
@@ -16,99 +12,90 @@ class ReplayMemory:
         self.storage = deque([], maxlen=capacity)
         self.device = device
 
-    def push(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor,
-             next_state: torch.Tensor, done: Tensor, info: dict) -> None:
+    def push(
+        self, 
+        state: np.ndarray, 
+        action: np.ndarray, 
+        reward: float,
+        next_state: np.ndarray, 
+        done: bool, 
+        info: dict
+    ) -> None:
         """
-        Save a transition in the replay memory
+        Save a single-step transition in the replay memory as NumPy + scalars.
+        
+        state, action, next_state: typically shape (obs_dim,) or (action_dim,)
+        reward: float
+        done: bool
+        info: dict
         """
         self.storage.append((state, action, reward, next_state, done, info))
 
-    def sample(self, batch_size: int, randomly: bool) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, List[Any]]:
+    def push_batch(self, transitions_list):
         """
-        Sample a batch of transitions from the memory.
+        Optionally push a batch of transitions at once.
+        Each element in transitions_list is a tuple:
+           (state, action, reward, next_state, done, info)
+        This can reduce Python function-call overhead.
         """
+        for item in transitions_list:
+            self.storage.append(item)
 
-        # If there are not enough elements in the memory, take all elements of the storage for now
+    def sample(self, batch_size: int, randomly: bool = True):
+        """
+        Sample a batch of transitions from the memory and convert them to torch Tensors.
+        
+        Returns (states, actions, rewards, next_states, dones, infos)
+        where states, actions, next_states = float32 Torch tensors
+              rewards, dones = float32 Torch tensors (with shape [batch_size, 1])
+              infos = list of dicts (unchanged)
+        """
         if batch_size > len(self.storage):
             batch_size = len(self.storage)
-            logging.warning("The batch size was larger than the memory elements!")
+
+            # Or you can raise an Exception if you prefer.
+            # raise ValueError("Batch size is bigger than memory!")
 
         if randomly:
-            # Random batch
             batch = random.sample(self.storage, batch_size)
         else:
-            # Sequential batch
             batch = [self.storage[i] for i in range(batch_size)]
+
+        # Unzip
         states, actions, rewards, next_states, dones, infos = zip(*batch)
 
-        # Convert them to the right shapes
-        states = torch.vstack(states).to(self.device)
-        actions = torch.vstack(actions).to(self.device)
-        rewards = torch.vstack(rewards).to(self.device)
-        next_states = torch.vstack(next_states).to(self.device)
-        dones = torch.vstack(dones).to(self.device)
-        infos = list(infos)
+        # Convert to NumPy
+        # states is a tuple of shape (batch_size,) each with shape (obs_dim,)
+        states_np     = np.stack(states).astype(np.float32)      # shape (batch_size, obs_dim)
+        actions_np    = np.stack(actions).astype(np.float32)     # shape (batch_size, act_dim)
+        rewards_np    = np.array(rewards, dtype=np.float32).reshape(-1, 1)
+        next_states_np= np.stack(next_states).astype(np.float32)
+        dones_np      = np.array(dones, dtype=np.float32).reshape(-1, 1)
 
-        return states, actions, rewards, next_states, dones, infos
+        # Now convert to torch
+        states_t      = torch.from_numpy(states_np).to(self.device)
+        actions_t     = torch.from_numpy(actions_np).to(self.device)
+        rewards_t     = torch.from_numpy(rewards_np).to(self.device)
+        next_states_t = torch.from_numpy(next_states_np).to(self.device)
+        dones_t       = torch.from_numpy(dones_np).to(self.device)
 
-    def sample_horizon(self, batch_size: int, horizon: int = 0) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """
-        Samples a trajectory of a random episode from the memory.
-        This trajectory starts at a random position in the episode and goes #horizon steps in the future
-        returns the tuple of the horizon trajectory.
+        return states_t, actions_t, rewards_t, next_states_t, dones_t, list(infos)
 
-        CAUTION: if horizon = 0, the output shape of each object is (batch_size, object_size)
-        :returns
-            e.g. if horizon = 3,
-            horizon_states tensor(batch_size, horizon + 1, state_size)
-            horizon_actions tensor(batch_size, horizon + 1, action_size)
-            horizon_rewards tensor(batch_size, horizon + 1, 1)
-            horizon_dones tensor(batch_size, horizon + 1, 1)
-            horizon_next_state tensor(batch_size, horizon + 1, state_size)
-            horizon_infos list(batch_size, horizon + 1, info_length) -> not available yet
-        """
-        assert horizon >= 0, "Horizon must be >= 0!"
+    """
+    # NOTE: The original sample_horizon() expected states to be entire episodes (T x state_dim).
+    # Storing single-step transitions in self.storage breaks that approach.
+    # If you truly need horizon-based sampling, you must adapt the data structure
+    # to store entire episodes or partial trajectories rather than single steps.
 
-        # Step 01: We sample a random episode with replacement *for each batch*
-        batches = random.choices(self.storage, k = batch_size)
-        states, actions, rewards, next_states, dones, infos = zip(*batches)
-        episode_lengths = torch.tensor([tensor.size(0) for tensor in states])
-
-
-        # Step 04: We sample a random number to get the start_index of the horizon
-        start_indices = [random.randint(0, episode_length.item() - horizon - 1) for episode_length in episode_lengths]
-        slices = [slice(start_ind, start_ind + horizon + 1) for start_ind in start_indices]
-
-        # Step 05: We only want the horizon of the episode
-        horizon_states = torch.stack([_state[_slice] for _state, _slice in zip(states, slices)])
-        horizon_actions = torch.stack([_action[_slice] for _action, _slice in zip(actions, slices)])
-        horizon_rewards = torch.stack([_reward[_slice] for _reward, _slice in zip(rewards, slices)]).unsqueeze(-1)
-        horizon_next_states = torch.stack([_next_state[_slice] for _next_state, _slice in zip(next_states, slices)])
-        horizon_dones = torch.stack([done[_slice] for done, _slice in zip(dones, slices)]).unsqueeze(-1)
-        # horizon_infos = infos[:, start_indices]
-
-        # Step 06 (Optional): If the horizon = 0, we can get rid of the second dim
-        # TODO: df: Can be implemented better, but it works for now
-        if horizon == 0:
-            horizon_states = horizon_states.squeeze(1)
-            horizon_actions = horizon_actions.squeeze(1)
-            horizon_rewards = horizon_rewards.squeeze(1)
-            horizon_next_states = horizon_next_states.squeeze(1)
-            horizon_dones = horizon_dones.squeeze(1)
-
-
-        return horizon_states, horizon_actions, horizon_rewards, horizon_next_states, horizon_dones  # , horizon_infos
-
-
+    def sample_horizon(self, batch_size: int, horizon: int = 0):
+        raise NotImplementedError(
+            "sample_horizon() is not compatible with single-step transitions. "
+            "Either store entire episodes in memory or remove horizon sampling."
+        )
+    """
 
     def __len__(self) -> int:
-        """
-        Return the current size of the memory
-        """
         return len(self.storage)
 
     def clear(self) -> None:
-        """
-        Clears all transitions from the memory
-        """
         self.storage.clear()

@@ -41,6 +41,7 @@ SETTINGS = {
 
         # Environment settings
         "USE_ENV": PENDULUM,  # The used environment
+        "PROXY_REWARDS": True,  # If the agent should get proxy rewards (works only with HOCKEY)
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
@@ -180,6 +181,11 @@ SETTINGS = {
         "INIT_ALPHA": 0.2,
         "HIDDEN_DIM": 256,
         "CHECKPOINT_NAME": None,  # which checkpoint should be used for the SAC Hockey agent?
+        "NUM_EPOCHS": 1_000,
+        "NUM_EPISODES_PER_TRAINING_EPOCH": 20,
+        "NUM_EPISODES_PER_VALIDATION_EPOCH": 20,
+        "VALIDATION_FREQ": 10,
+        "TRAIN_FREQ": 1
     },
     "MPO": {
         "ACTOR": {
