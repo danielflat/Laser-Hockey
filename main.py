@@ -548,6 +548,7 @@ def warmup_sac_hockey(
 
     while len(memory) < min_buffer_size:
         state, info = env.reset()
+        state_opponent = env.obs_agent_two()
         done = False
 
         while not done:
@@ -560,7 +561,7 @@ def warmup_sac_hockey(
             done = terminated or truncated
 
             # Opponent agent "observations" if you want them
-            state_opponent = env.obs_agent_two()
+            next_state_opponent = env.obs_agent_two()
             reward_opponent = env.get_reward_agent_two(env.get_info_agent_two())
 
             # Store agent transition
@@ -578,12 +579,13 @@ def warmup_sac_hockey(
                 state_opponent.astype(np.float32),
                 a_opp.astype(np.float32),
                 float(reward_opponent),
-                env.obs_agent_two().astype(np.float32),
+                next_state_opponent.astype(np.float32),
                 bool(done),
                 info
             ))
 
             state = next_state
+            state_opponent = next_state_opponent
 
             # Periodically flush to replay memory to reduce overhead
             if len(local_buffer) >= 1000:
