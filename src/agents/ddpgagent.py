@@ -107,6 +107,10 @@ class DDPGAgent(Agent):
         self.action_space = action_space
         observation_size = observation_space.shape[0]
         self.action_size = self.get_num_actions(action_space)
+        self.min_action = action_space.low[:self.action_size]
+        self.min_action_torch = torch.tensor(self.min_action, device = self.device)
+        self.max_action = action_space.high[:self.action_size]
+        self.max_action_torch = torch.tensor(self.max_action, device = self.device)
 
         self.noise = initNoise(action_shape = (self.action_size,), noise_settings = ddpg_settings["NOISE"],
                                device = self.device)
@@ -138,7 +142,7 @@ class DDPGAgent(Agent):
         """
         return f"DDPGAgent"
 
-
+    @torch.no_grad()
     def act(self, state: torch.Tensor) -> np.ndarray:
         """
         The Agent chooses an action.
@@ -149,21 +153,17 @@ class DDPGAgent(Agent):
         """
 
         # In evaluation mode, we always exploit
-        with torch.no_grad():
-            if self.isEval:
-                greedy_action = self.origin_net.greedyAction(state)
-                return greedy_action.detach().cpu().numpy()
+        if self.isEval:
+            greedy_action = self.origin_net.greedyAction(state)
+            return greedy_action.cpu().numpy()
 
-            # In training mode, use epsilon greedy action sampling
-            elif not self.isEval:
-                proposed_action = self.origin_net.greedyAction(state)
-                noise = self.noise_factor * self.noise.sample()
-                noisy_action = proposed_action + noise
-                normalized_action = self.action_space.low[:self.action_size] + (
-                            noisy_action.detach().cpu().numpy() + 1.0) / 2.0 * (
-                                            self.action_space.high[:self.action_size] - self.action_space.low[
-                                                                                        :self.action_size])
-                return normalized_action
+        # In training mode, use epsilon greedy action sampling
+        elif not self.isEval:
+            proposed_action = self.origin_net.greedyAction(state)
+            noise = self.noise_factor * self.noise.sample()
+            noisy_action = proposed_action.cpu().numpy() + noise
+            normalized_action = np.clip(noisy_action, self.min_action, self.max_action)
+            return normalized_action
 
     def optimize(self, memory: ReplayMemory, episode_i: int) -> Dict[str, Any]:
         statistics_episode = []
