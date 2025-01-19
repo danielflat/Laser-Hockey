@@ -53,7 +53,7 @@ def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int,
         raise Exception(f"The render mode '{render_mode}' is not supported! Please choose another one!")
 
     if use_env == HOCKEY:
-        env = h_env.HockeyEnv_BasicOpponent(proxy_rewards=proxy_rewards)
+        env = h_env.HockeyEnv(proxy_rewards=proxy_rewards)
     else:
         env = gymnasium.make(use_env, render_mode = render_mode)
 
