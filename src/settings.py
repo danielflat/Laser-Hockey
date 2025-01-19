@@ -178,6 +178,11 @@ SETTINGS = {
         "INIT_ALPHA": 0.2,
         "HIDDEN_DIM": 256,
         "CHECKPOINT_NAME": None,  # which checkpoint should be used for the SAC Hockey agent?
+        "NUM_EPOCHS": 3,
+        "NUM_EPISODES_PER_TRAINING_EPOCH": 2,
+        "NUM_EPISODES_PER_VALIDATION_EPOCH": 2,
+        "VALIDATION_FREQ": 1,
+        "TRAIN_FREQ": 1
     },
     "MPO": {
         "ACTOR": {
