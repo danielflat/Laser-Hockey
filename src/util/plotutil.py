@@ -63,25 +63,6 @@ def plot_training_metrics(episode_durations: List[int], episode_rewards: List[fl
     # Step 06: Pause to refresh the plot
     plt.pause(1)
 
-def rolling_avg_variable(data, window):
-    """
-    Returns a rolling-average-smoothed version of `data`
-    with the same length as `data`. At the edges, the window
-    size is adjusted so that only valid data points are used.
-    """
-    data = np.array(data)
-    n = len(data)
-    if n < window or window < 2:
-        return data
-    
-    smoothed = np.empty(n)
-    for i in range(n):
-        # Determine the start and end of the window
-        start = max(0, i - window//2)
-        end = min(n, i + window//2 + 1)  # +1 because slicing is exclusive
-        smoothed[i] = np.mean(data[start:end])
-    return smoothed
-
 def plot_sac_training_metrics(
     rewards: list,
     wins: list,
