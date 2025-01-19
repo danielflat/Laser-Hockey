@@ -28,6 +28,7 @@ SEED = MAIN_SETTINGS["SEED"]
 DEVICE = MAIN_SETTINGS["DEVICE"]
 USE_TF32 = MAIN_SETTINGS["USE_TF32"]
 USE_ENV = MAIN_SETTINGS["USE_ENV"]
+PROXY_REWARDS = MAIN_SETTINGS["PROXY_REWARDS"]
 RENDER_MODE = MAIN_SETTINGS["RENDER_MODE"]
 NUMBER_DISCRETE_ACTIONS = MAIN_SETTINGS["NUMBER_DISCRETE_ACTIONS"]
 USE_ALGO = MAIN_SETTINGS["USE_ALGO"]
@@ -823,7 +824,7 @@ def main():
         torch.set_float32_matmul_precision("high")
 
     # Initialize the environment
-    env = initEnv(USE_ENV, RENDER_MODE, NUMBER_DISCRETE_ACTIONS)
+    env = initEnv(USE_ENV, RENDER_MODE, NUMBER_DISCRETE_ACTIONS, PROXY_REWARDS)
 
     # Choose which algorithm to pick to initialize the agent
     agent = initAgent(USE_ALGO, env = env, device = DEVICE, agent_settings=AGENT_SETTINGS)

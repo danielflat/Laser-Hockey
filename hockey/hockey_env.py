@@ -89,7 +89,7 @@ class HockeyEnv(gym.Env, EzPickle):
 
   continuous = False
 
-  def __init__(self, keep_mode: bool=True, mode: int | str | Mode = Mode.NORMAL, verbose: bool=False):
+  def __init__(self, keep_mode: bool=True, mode: int | str | Mode = Mode.NORMAL, verbose: bool=False, proxy_rewards: bool=False):
     """ mode: is the game mode: NORMAL, TRAIN_SHOOTING, TRAIN_DEFENSE,
         keep_mode: whether the puck gets catched by the player
         it can be changed later using the reset function
@@ -152,6 +152,8 @@ class HockeyEnv(gym.Env, EzPickle):
     self.discrete_action_space = spaces.Discrete(7)
 
     self.verbose = verbose
+
+    self.proxy_rewards = proxy_rewards
 
     self.reset(self.one_starts)
 
@@ -532,12 +534,18 @@ class HockeyEnv(gym.Env, EzPickle):
   # the shaping should probably be removed in future versions
   def get_reward(self, info):
     r = self._compute_reward()
-    r += info["reward_closeness_to_puck"]
+    if self.proxy_rewards:
+      r += info["reward_closeness_to_puck"]
+      r += info["reward_touch_puck"]
+      r += info["reward_puck_direction"]
     return float(r)
 
   def get_reward_agent_two(self, info_two):
     r = - self._compute_reward()
-    r += info_two["reward_closeness_to_puck"]
+    if self.proxy_rewards:
+      r += info_two["reward_closeness_to_puck"]
+      r += info_two["reward_touch_puck"]
+      r += info_two["reward_puck_direction"]
     return float(r)
 
   def _get_info(self):
@@ -871,8 +879,8 @@ class HumanOpponent():
 
 
 class HockeyEnv_BasicOpponent(HockeyEnv):
-  def __init__(self, mode=Mode.NORMAL, weak_opponent=False):
-    super().__init__(mode=mode, keep_mode=True)
+  def __init__(self, mode=Mode.NORMAL, weak_opponent=False, proxy_rewards=False):
+    super().__init__(mode=mode, keep_mode=True, proxy_rewards=proxy_rewards)
     self.opponent = BasicOpponent(weak=weak_opponent)
     # linear force in (x,y)-direction, torque, and shooting
     self.action_space = spaces.Box(-1, +1, (4,), dtype=np.float32)
@@ -882,6 +890,71 @@ class HockeyEnv_BasicOpponent(HockeyEnv):
     a2 = self.opponent.act(ob2)
     action2 = np.hstack([action, a2])
     return super().step(action2)
+
+class NormalizedEnv(gym.Wrapper):
+    """
+    Normalizes observations using a running mean and variance.
+
+    By default, it applies an exponential moving average (EMA) update:
+      new_mean = (1 - alpha) * old_mean + alpha * obs
+      new_var  = (1 - alpha) * old_var  + alpha * (obs - new_mean)**2
+    Then obs_norm = (obs - mean) / sqrt(var + eps)
+
+    If your environment uses gymnasium and returns (obs, reward, done, truncated, info),
+    just adapt the 'step()' method accordingly.
+    """
+    def __init__(self, env, alpha=0.001, eps=1e-8):
+        super().__init__(env)
+        obs_shape = env.observation_space.shape
+        
+        self.alpha = alpha
+        self.eps = eps
+        
+        # Running stats
+        # We store them as NumPy arrays of shape == obs_shape
+        self.mean = np.zeros(obs_shape, dtype=np.float32)
+        self.var = np.ones(obs_shape, dtype=np.float32)
+
+    def _update_stats(self, obs):
+        """
+        Update running mean and variance with exponential moving average.
+        """
+        # If obs is a single 1D array, we do elementwise updates:
+        self.mean = (1.0 - self.alpha) * self.mean + self.alpha * obs
+        # Compute new_var with the newly updated mean
+        delta = obs - self.mean
+        self.var = (1.0 - self.alpha) * self.var + self.alpha * (delta ** 2)
+
+    def _normalize_obs(self, obs):
+        """
+        Transform obs to have near-zero mean and unit variance, per dimension.
+        """
+        return (obs - self.mean) / (np.sqrt(self.var) + self.eps)
+
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)   # If using Gym 0.26+ or Gymnasium
+        # If your env returns only obs, do: obs = self.env.reset(...)
+        
+        # Update stats and normalize
+        self._update_stats(obs)
+        obs_norm = self._normalize_obs(obs)
+        
+        return obs_norm, info  # Or just return obs_norm if your reset doesn't return info
+
+    def step(self, action):
+        # Standard Gym:
+        next_obs, reward, done, truncated, info = self.env.step(action)
+        
+        # If your environment is Gymnasium-like:
+        # next_obs, reward, done, truncated, info = self.env.step(action)
+        # and then handle 'done or truncated' accordingly.
+        
+        # Update stats and normalize
+        self._update_stats(next_obs)
+        next_obs_norm = self._normalize_obs(next_obs)
+        
+        return next_obs_norm, reward, done, truncated, info
+        # If you have truncated, also return truncated here
 
 
 from gymnasium.envs.registration import register

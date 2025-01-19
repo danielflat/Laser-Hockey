@@ -36,7 +36,8 @@ SETTINGS = {
         "SEED": 24,  # The seed that we want to use
         "DEVICE": torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # On which machine is it running?
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
-        "USE_ENV": PENDULUM,  # The used environment
+        "USE_ENV": HOCKEY,  # The used environment
+        "PROXY_REWARDS": True,  # If the agent should get proxy rewards (works only with HOCKEY)
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
