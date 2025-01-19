@@ -5,14 +5,14 @@ import torch
 from time import localtime, strftime
 
 from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
-    SMOOTH_L1_LOSS, TDMPC2_ALGO
+    SMOOTH_L1_LOSS, TDMPC2_ALGO, SAC_ALGO, HOCKEY, HUMAN
 
 _DEFAULT_OPTIMIZER = {
     "OPTIM_NAME": ADAM,  # Which optimizer to use
     "LEARNING_RATE": 3e-4,  # The learning rate for the agent
     "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
     "EPS": 1e-8,  # eps Adam param
-    "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+    "WEIGHT_DECAY": 0.0,  # The weight decay rate
     "USE_FUSION": torch.cuda.is_available()
     # if we have CUDA, we can use the fusion implementation of Adam -> Faster
 }
@@ -42,8 +42,8 @@ SETTINGS = {
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
         "SELF_PLAY": False,  # If the agent should play against itself like in AlphaGo
-        "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
-        "BUFFER_SIZE": 1_000,  # How many items can be stored in the replay buffer?
+        "USE_ALGO": SAC_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
+        "BUFFER_SIZE": 200_000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
         "NUM_TRAINING_EPISODES": 10_000,  # How many training episodes should be run?
@@ -59,16 +59,16 @@ SETTINGS = {
         # GENERAL SETTINGS
         "USE_BF16": False,  # Uses BF16 in forward pass or not. Makes it faster, but you have lower precision
         "USE_COMPILE": False,  # if torch.compile should be used for the networks
-        "OPT_ITER": 1,  # How many iterations should be done of gradient descent when calling agent.optimize()?
-        "BATCH_SIZE": 200,  # The batch size for doing gradient descent
-        "DISCOUNT": 0.95,  # The discount factor for the TD error
+        "OPT_ITER": 4,  # How many iterations should be done of gradient descent when calling agent.optimize()?
+        "BATCH_SIZE": 256,  # The batch size for doing gradient descent
+        "DISCOUNT": 0.9,  # The discount factor for the TD error
 
         # TARGET NET STRATEGY
         "USE_TARGET_NET": True,  # If a target net is used
         "USE_SOFT_UPDATES": True,  # If the target network is updated. True = softly, False = hardly
         "TARGET_NET_UPDATE_FREQ": 1,
         # int: Gives the frequency when to update the target net. If target net is disabled, this param is not relevant. If == 1, you update at every step.
-        "TAU": 0.001,  # Soft update parameter
+        "TAU": 0.01,  # Soft update parameter
 
         # EPSILON GREEDY STRATEGY
         "EPSILON_DECAY_STRATEGY": EXPONENTIAL,
