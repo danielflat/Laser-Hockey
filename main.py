@@ -521,218 +521,212 @@ def do_mpo_hockey_training(env, agent, memory, opponent_pool: dict, self_opponen
         if episode % CHECKPOINT_ITER == 0:
             agent.saveModel(MODEL_NAME, episode)
 
-def warmup_sac_hockey(env, memory, min_buffer_size=int(0.25 * BUFFER_SIZE), action_dim=4):
+def warmup_sac_hockey(
+    env, 
+    memory, 
+    min_buffer_size: int = None, 
+    action_dim: int = 4
+):
     """
-    Collect random transitions until the replay buffer has at least `min_buffer_size` entries.
+    Fill the replay buffer with random transitions until it has >= min_buffer_size entries.
+    To reduce overhead, we do local buffering and then push them in bulk.
     """
-    logging.info(f"[INFO] Starting warm-up phase with random actions until memory has >= {min_buffer_size} samples.")
+    if min_buffer_size is None:
+        min_buffer_size = int(0.25 * BUFFER_SIZE)
+
+    logging.info(f"[INFO] Starting warm-up phase; collecting random transitions until memory >= {min_buffer_size}.")
+
     episodes = 0
+    local_buffer = []
 
     while len(memory) < min_buffer_size:
         state, info = env.reset()
         done = False
-        total_reward = 0.0
-        steps = 0
 
         while not done:
-            # Sample a random action from the environment's action range or simply in [-1,1]
-            # Adjust `action_dim` to match your environment if needed
-            action = np.random.uniform(low=-1.0, high=1.0, size=action_dim)
-            action_opponent = np.random.uniform(low=-1.0, high=1.0, size=action_dim)
+            # Random actions for warmup
+            a_agent = np.random.uniform(low=-1.0, high=1.0, size=action_dim)
+            a_opp   = np.random.uniform(low=-1.0, high=1.0, size=action_dim)
+            joint_action = np.concatenate([a_agent, a_opp])
 
-            next_state, reward, terminated, truncated, info = env.step(np.concatenate((action, action_opponent)))
-            state_opponent = env.obs_agent_two()
-            reward_opponent = env.get_reward_agent_two(env.get_info_agent_two())
+            next_state, reward, terminated, truncated, info = env.step(joint_action)
             done = terminated or truncated
 
-            # Store transition
-            memory.push(
-                torch.tensor(state, dtype=torch.float32),
-                torch.tensor(action, dtype=torch.float32),
-                torch.tensor(reward, dtype=torch.float32),
-                torch.tensor(next_state, dtype=torch.float32),
-                torch.tensor(done, dtype=torch.int),
-                info
-            )
+            # Opponent agent "observations" if you want them
+            state_opponent = env.obs_agent_two()
+            reward_opponent = env.get_reward_agent_two(env.get_info_agent_two())
 
-            memory.push(
-                torch.tensor(state_opponent, dtype=torch.float32),
-                torch.tensor(action_opponent, dtype=torch.float32),
-                torch.tensor(reward_opponent, dtype=torch.float32),
-                torch.tensor(env.obs_agent_two(), dtype=torch.float32),
-                torch.tensor(done, dtype=torch.int),
+            # Store agent transition
+            local_buffer.append((
+                state.astype(np.float32),
+                a_agent.astype(np.float32),
+                float(reward),
+                next_state.astype(np.float32),
+                bool(done),
                 info
-            )
+            ))
 
-            total_reward += reward
-            steps += 1
+            # Store opponent transition, if desired
+            local_buffer.append((
+                state_opponent.astype(np.float32),
+                a_opp.astype(np.float32),
+                float(reward_opponent),
+                env.obs_agent_two().astype(np.float32),
+                bool(done),
+                info
+            ))
+
             state = next_state
+
+            # Periodically flush to replay memory to reduce overhead
+            if len(local_buffer) >= 1000:
+                memory.push_batch(local_buffer)
+                local_buffer.clear()
 
         episodes += 1
 
+    # Flush any remainder
+    if local_buffer:
+        memory.push_batch(local_buffer)
+        local_buffer.clear()
+
     logging.info(f"[INFO] Warm-up done after {episodes} episodes. Replay buffer size: {len(memory)}")
 
-def do_sac_hockey_training(env, agent, memory, opponent_pool: dict):
+
+def do_sac_hockey_training(env, agent, memory):
     """
-    Trains an SAC agent in the 2D hockey environment, with an opponent pool.
-    Uses a warm-up phase of random exploration, then an epoch-based structure
-    for clearer logging/plotting of training progress.
+    Trains the SAC agent on the Hockey environment, using a simpler epoch structure.
     """
 
-    # -------------------------------
-    # 1) Warm-up
-    # -------------------------------
+    # Step 1: Warm-up
     warmup_sac_hockey(env, memory)
 
-    # Keep track of metrics across *all* episodes
-    all_episode_rewards = []
-    all_win_indicators  = []   # 1 if win, 0 otherwise
-    all_critic_losses   = []
-    all_actor_losses    = []
-    all_alpha_losses    = []
-    all_episode_durations = []
-
-    total_episodes = 0
-    total_steps    = 0
-
-    # Hyperparams for epoch-based logging
-    EPOCH_SIZE = 10      # number of episodes per epoch
+    EPOCH_SIZE = 10
     NUM_EPOCHS = NUM_TRAINING_EPISODES // EPOCH_SIZE
+    TRAIN_FREQ = 1  # Only call optimize() once every 10 env steps
 
     logging.info("[INFO] Starting SAC training with epochs...")
 
-    for epoch_i in range(NUM_EPOCHS):
-        # These lists hold metrics for the *current epoch* only
-        epoch_rewards    = []
-        epoch_wins       = []
-        epoch_critic_loss = []
-        epoch_actor_loss  = []
-        epoch_alpha_loss  = []
-        epoch_durations   = []
+    all_rewards = []
+    all_wins    = []
+    all_critic_losses = []
+    all_actor_losses  = []
+    all_alpha_losses  = []
+    all_episode_steps = []
 
-        # ------------------------------------------------
-        # Run EPOCH_SIZE episodes and gather metrics
-        # ------------------------------------------------
-        for episode in range(EPOCH_SIZE):
+    total_steps = 0
+    total_episodes = 0
+
+    for epoch_i in range(NUM_EPOCHS):
+        epoch_rewards  = []
+        epoch_wins     = []
+        epoch_c_losses = []
+        epoch_a_losses = []
+        epoch_al_losses= []
+        epoch_steps    = []
+
+        for ep_i in range(EPOCH_SIZE):
             total_episodes += 1
             state, info = env.reset(seed=SEED + total_episodes, one_starting=True)
             state_opponent = env.obs_agent_two()
-            state = torch.tensor(state, dtype=torch.float32)
-            state_opponent = torch.tensor(state_opponent, dtype=torch.float32)
 
-            done = False
+            episode_done = False
             episode_reward = 0.0
-            step_losses = []  # store losses for *this* episode
+            step_losses = []
 
-            for step in count(start=1):
+            step_count = 0
+
+            while not episode_done:
                 if RENDER_MODE == "human":
-                    env.render(mode="human")
-                # Let the agent act
-                action = agent.act(state)
-                action_opponent = agent.act(state_opponent)
+                    env.render()
 
-                # Step environment
-                next_state, reward, terminated, truncated, info = env.step(np.concatenate((action, action_opponent)))
-                next_state_opponent = env.obs_agent_two()
-                reward_opponent = env.get_reward_agent_two(env.get_info_agent_two())
-                done = (terminated or truncated)
+                # Agent acts on NumPy state
+                a_agent = agent.act(state)
+                a_opp   = agent.act(state_opponent)
+                joint_action = np.concatenate([a_agent, a_opp])
 
-                # Convert to torch
-                action_t     = torch.tensor(action,     dtype=torch.float32)
-                reward_t     = torch.tensor(reward,     dtype=torch.float32)
-                done_t       = torch.tensor(done,       dtype=torch.int)
-                next_state_t = torch.tensor(next_state, dtype=torch.float32)
+                next_state, reward, terminated, truncated, info = env.step(joint_action)
+                reward_opp = env.get_reward_agent_two(env.get_info_agent_two())
+                next_state_opp = env.obs_agent_two()
 
-                action_opponent_t = torch.tensor(action_opponent, dtype=torch.float32)
-                reward_opponent_t = torch.tensor(reward_opponent, dtype=torch.float32)
-                next_state_opponent_t = torch.tensor(next_state_opponent, dtype=torch.float32)
+                done = terminated or truncated
 
-                # Store transition
-                memory.push(state, action_t, reward_t, next_state_t, done_t, info)
-                memory.push(state_opponent, action_opponent_t, reward_opponent_t, next_state_opponent_t, done_t, info)
+                # Store transitions in replay as NumPy
+                memory.push(
+                    state,       # shape (obs_dim,)
+                    a_agent,     # shape (act_dim,)
+                    float(reward),
+                    next_state,  # shape (obs_dim,)
+                    done,
+                    info
+                )
+                memory.push(
+                    state_opponent,
+                    a_opp,
+                    float(reward_opp),
+                    next_state_opp,
+                    done,
+                    info
+                )
 
-                # If buffer is large enough, do a gradient update step
-                if len(memory) >= 100 * BATCH_SIZE:
-                    losses_3 = agent.optimize(memory, episode_i=total_episodes)
-                    # losses_3 is [critic_loss, actor_loss, alpha_loss]
-                    step_losses.append(losses_3)
-                    total_steps += 1
+                # Call optimize() only every TRAIN_FREQ steps
+                if (total_steps % TRAIN_FREQ == 0) and (len(memory) >= 100 * BATCH_SIZE):
+                    losses = agent.optimize(memory, episode_i=total_episodes)
+                    step_losses.append(losses)
 
                 episode_reward += reward
-                state = next_state_t
-                state_opponent = next_state_opponent_t
+                step_count += 1
+                total_steps += 1
 
-                if done:
-                    epoch_durations.append(step)
-                    break
+                # Move on
+                state = next_state
+                state_opponent = next_state_opp
+                episode_done = done
 
-            # Aggregate episode metrics
+            epoch_steps.append(step_count)
             epoch_rewards.append(episode_reward)
             winner = (info["winner"] == 1)
             epoch_wins.append(1 if winner else 0)
 
-            # If we had any optimize steps, average them for the final episode record
+            # If we had updates, average them for logging
             if len(step_losses) > 0:
-                arr = np.array(step_losses)  # shape [num_steps_with_updates, 3]
-                mean_losses = arr.mean(axis=0)  # [avgCritic, avgActor, avgAlpha]
+                arr = np.array(step_losses)  # shape [num_updates, 3]
+                mean_losses = arr.mean(axis=0)  # [critic, actor, alpha]
             else:
                 mean_losses = [0.0, 0.0, 0.0]
-            epoch_critic_loss.append(mean_losses[0])
-            epoch_actor_loss.append(mean_losses[1])
-            epoch_alpha_loss.append(mean_losses[2])
+            epoch_c_losses.append(mean_losses[0])
+            epoch_a_losses.append(mean_losses[1])
+            epoch_al_losses.append(mean_losses[2])
 
-        # End of EPOCH_SIZE episodes. Aggregate stats for the entire epoch
-        avg_reward   = float(np.mean(epoch_rewards)) if epoch_rewards else 0.0
-        win_rate     = float(np.mean(epoch_wins))    if epoch_wins else 0.0
-        avg_duration = float(np.mean(epoch_durations)) if epoch_durations else 0.0
+        # Aggregate stats
+        epoch_avg_rew = float(np.mean(epoch_rewards)) if epoch_rewards else 0.0
+        epoch_win_rate= float(np.mean(epoch_wins))
+        epoch_avg_steps= float(np.mean(epoch_steps)) if epoch_steps else 0.0
+        epoch_avg_c = float(np.mean(epoch_c_losses))
+        epoch_avg_a = float(np.mean(epoch_a_losses))
+        epoch_avg_al= float(np.mean(epoch_al_losses))
 
-        avg_critic_l = float(np.mean(epoch_critic_loss))
-        avg_actor_l  = float(np.mean(epoch_actor_loss))
-        avg_alpha_l  = float(np.mean(epoch_alpha_loss))
-
-        # Append them to the overall lists
-        all_episode_rewards.extend(epoch_rewards)
-        all_win_indicators.extend(epoch_wins)
-        all_critic_losses.extend(epoch_critic_loss)
-        all_actor_losses.extend(epoch_actor_loss)
-        all_alpha_losses.extend(epoch_alpha_loss)
-        all_episode_durations.extend(epoch_durations)
-
-        # Logging info for this epoch
+        # Logging
         logging.info(
-            f"[Epoch {epoch_i+1}/{NUM_EPOCHS}] Episodes: {total_episodes}, Steps: {total_steps}, "
-            f"AvgReward: {avg_reward:.3f}, WinRate: {win_rate:.3f}, "
-            f"CriticLoss: {avg_critic_l:.4f}, ActorLoss: {avg_actor_l:.4f}, AlphaLoss: {avg_alpha_l:.4f}, "
-            f"Duration: {avg_duration:.1f}"
+            f"[Epoch {epoch_i+1}/{NUM_EPOCHS}] Eps={total_episodes}, Steps={total_steps}, "
+            f"AvgRew={epoch_avg_rew:.2f}, WinRate={epoch_win_rate:.2f}, "
+            f"CriticLoss={epoch_avg_c:.3f}, ActorLoss={epoch_avg_a:.3f}, AlphaLoss={epoch_avg_al:.3f}, "
+            f"AvgDuration={epoch_avg_steps:.1f}"
         )
 
-        # Plot each epoch if desired
-        if SHOW_PLOTS:
-            plot_sac_training_metrics(
-                rewards=all_episode_rewards,
-                wins=all_win_indicators,
-                critic_losses=all_critic_losses,
-                actor_losses=all_actor_losses,
-                alpha_losses=all_alpha_losses,
-                current_epoch=epoch_i+1
-            )
+        # Store in big arrays if desired
+        all_rewards.extend(epoch_rewards)
+        all_wins.extend(epoch_wins)
+        all_critic_losses.extend(epoch_c_losses)
+        all_actor_losses.extend(epoch_a_losses)
+        all_alpha_losses.extend(epoch_al_losses)
+        all_episode_steps.extend(epoch_steps)
 
-        # Save a checkpoint every X epochs
+        # Example checkpoint
         if (epoch_i+1) % (CHECKPOINT_ITER // EPOCH_SIZE) == 0:
             agent.saveModel(MODEL_NAME, total_episodes)
 
-    # Save a result plot at the end of training
-    plot_sac_training_metrics(
-        rewards=all_episode_rewards,
-        wins=all_win_indicators,
-        critic_losses=all_critic_losses,
-        actor_losses=all_actor_losses,
-        alpha_losses=all_alpha_losses,
-        current_epoch=epoch_i+1,
-        save=True
-    )
-
-    logging.info("[INFO] Finished SAC Hockey Training!")
+    logging.info("[INFO] Finished SAC training!")
 
 def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_opponent: Agent):
     episode_durations = []
@@ -1163,7 +1157,7 @@ def main():
             do_tdmpc2_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool,
                                       self_opponent = self_opponent)
         elif USE_ALGO == SAC_ALGO:
-            do_sac_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool)
+            do_sac_hockey_training(env = env, agent = agent, memory = memory)
         elif USE_ALGO == MPO_ALGO:
             do_mpo_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = opponent_pool,
                                    self_opponent = self_opponent)
