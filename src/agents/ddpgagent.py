@@ -1,11 +1,10 @@
-import logging
-import os
-from typing import List
-
 import gymnasium
+import logging
 import numpy as np
+import os
 import torch
 from torch import device, nn
+from typing import Any, Dict
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
@@ -166,28 +165,40 @@ class DDPGAgent(Agent):
                                                                                         :self.action_size])
                 return normalized_action
 
-    def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
-        losses = []
+    def optimize(self, memory: ReplayMemory, episode_i: int) -> Dict[str, Any]:
+        statistics_episode = []
 
         for i in range(1, self.opt_iter + 1):
             # Step 01: Sample a batch from the memory
-            state, action, reward, next_state, done, _ = memory.sample(batch_size = self.batch_size, randomly = True)
+            state, action, reward, next_state, done = memory.sample_horizon(batch_size = self.batch_size)
 
             # Step 02: Update the agent.
-            loss = self.update(state, action, reward, next_state, done)
+            statistics_iter = self._update(state, action, reward, next_state, done)
 
             # Step 03: Keep track of the loss
-            losses.append(loss.item())
+            statistics_episode.append(statistics_iter)
 
         # Step 04: After some time, update the agent
         # NOTE: HERE, we the update frequency is w.t.r. the total number of episodes
         if episode_i % self.target_net_update_freq == 0:
             self._copyNets()
 
-        return losses
+        # We sum up the statistics from each optimization iteration by accumulating statistical quantities
+        # such that we can log it
+        sum_up_statistics_training_iter = {
+            "Avg. Total Loss": np.array([episode["total_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Actor Loss": np.array([episode["actor_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Critic Loss": np.array(
+                [episode["critic_loss"] for episode in statistics_episode]).mean(),
+            "Avg. Actor Grad Norm": np.array([episode["actor_grad_norm"] for episode in statistics_episode]).mean(),
+            "Avg. Critic Grad Norm": np.array(
+                [episode["critic_grad_norm"] for episode in statistics_episode]).mean(),
+        }
 
-    def update(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,
-               done: torch.Tensor):
+        return sum_up_statistics_training_iter
+
+    def _update(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,
+                done: torch.Tensor):
 
         # critic update
         if self.USE_BF_16:
@@ -199,10 +210,12 @@ class DDPGAgent(Agent):
         # critic backward step
         self.critic_optim.zero_grad()
         critic_loss.backward()
-        if self.use_gradient_clipping:
-            torch.nn.utils.clip_grad_value_(parameters = self.origin_net.critic.parameters(),
-                                            clip_value = self.gradient_clipping_value,
+        if self.use_norm_clipping:
+            critic_grad_norm = torch.nn.utils.clip_grad_norm_(parameters = self.origin_net.critic.parameters(),
+                                                              max_norm = self.norm_clipping_value,
                                             foreach = self.use_clip_foreach)
+        else:
+            critic_grad_norm = None
         self.critic_optim.step()
 
         if self.USE_BF_16:
@@ -215,15 +228,25 @@ class DDPGAgent(Agent):
         self.actor_optim.zero_grad()
         # actor backward step
         actor_loss.backward()
-        if self.use_gradient_clipping:
-            torch.nn.utils.clip_grad_value_(parameters = self.origin_net.actor.parameters(),
-                                            clip_value = self.gradient_clipping_value,
+        if self.use_norm_clipping:
+            actor_grad_norm = torch.nn.utils.clip_grad_norm_(parameters = self.origin_net.actor.parameters(),
+                                                             max_norm = self.norm_clipping_value,
                                             foreach = self.use_clip_foreach)
+        else:
+            actor_grad_norm = None
         self.actor_optim.step()
 
-        # NOTE: For logging, we currently only consider the critic loss
-        loss = critic_loss
-        return loss
+        total_loss = actor_loss + critic_loss
+
+        statistics = {
+            "total_loss": total_loss.item(),
+            "actor_loss": actor_loss.item(),
+            "critic_loss": critic_loss.item(),
+            "actor_grad_norm": actor_grad_norm.item(),
+            "critic_grad_norm": critic_grad_norm.item(),
+        }
+
+        return statistics
 
     def actor_forward(self, state):
         # actor forward step: Maximize the actor network by go and maximize the critic network

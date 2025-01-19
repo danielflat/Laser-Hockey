@@ -87,14 +87,14 @@ class ReplayMemory:
         horizon_dones = torch.stack([done[_slice] for done, _slice in zip(dones, slices)]).unsqueeze(-1)
         # horizon_infos = infos[:, start_indices]
 
-        # # Step 06 (Optional): If the horizon = 0, we can get rid of the second dim
-        # # TODO: df: Can be implemented better, but it works for now
-        # if horizon == 0:
-        #     horizon_states = horizon_states.squeeze(1)
-        #     horizon_actions = horizon_actions.squeeze(1)
-        #     horizon_rewards = horizon_rewards.squeeze(1)
-        #     horizon_next_states = horizon_next_states.squeeze(1)
-        #     horizon_dones = horizon_dones.squeeze(1)
+        # Step 06 (Optional): If the horizon = 0, we can get rid of the second dim
+        # TODO: df: Can be implemented better, but it works for now
+        if horizon == 0:
+            horizon_states = horizon_states.squeeze(1)
+            horizon_actions = horizon_actions.squeeze(1)
+            horizon_rewards = horizon_rewards.squeeze(1)
+            horizon_next_states = horizon_next_states.squeeze(1)
+            horizon_dones = horizon_dones.squeeze(1)
 
 
         return horizon_states, horizon_actions, horizon_rewards, horizon_next_states, horizon_dones  # , horizon_infos

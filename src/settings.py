@@ -4,9 +4,8 @@ This is the config file for the training run main.py.
 import torch
 from time import localtime, strftime
 
-from src.util.constants import ADAM, EXPONENTIAL, MSE_LOSS, PENDULUM, PINK_NOISE, \
-    SMOOTH_L1_LOSS, TDMPC2_ALGO
-from src.util.directoryutil import get_path
+from src.util.constants import ADAM, DDPG_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
+    SMOOTH_L1_LOSS
 
 _DEFAULT_OPTIMIZER = {
     "OPTIM_NAME": ADAM,  # Which optimizer to use
@@ -46,12 +45,12 @@ SETTINGS = {
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
         "SELF_PLAY": True,  # If the agent should play against itself like in AlphaGo
-        "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
+        "USE_ALGO": DDPG_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
 
         # Defining training loop
         "BUFFER_SIZE": 1_000,  # How many items can be stored in the replay buffer?
         "NUM_TRAINING_EPISODES": 10_000,  # How many training episodes should be run?
-        "NUM_TEST_EPISODES": 100,  # How many test episodes should be run?
+        "NUM_TEST_EPISODES": 1_000,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
         "SHOW_PLOTS": False,  # If you want to plot statistics after each episode
@@ -59,7 +58,7 @@ SETTINGS = {
 
         # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
         # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
-        "CHECKPOINT_NAME": get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth"),
+        "CHECKPOINT_NAME": None,
         "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
@@ -70,8 +69,8 @@ SETTINGS = {
         # GENERAL SETTINGS
         "USE_BF16": False,  # Uses BF16 in forward pass or not. Makes it faster, but you have lower precision
         "USE_COMPILE": False,  # if torch.compile should be used for the networks
-        "OPT_ITER": 1,  # How many iterations should be done of gradient descent when calling agent.optimize()?
-        "BATCH_SIZE": 200,  # The batch size for doing gradient descent
+        "OPT_ITER": 32,  # How many iterations should be done of gradient descent when calling agent.optimize()?
+        "BATCH_SIZE": 256,  # The batch size for doing gradient descent
         "DISCOUNT": 0.95,  # The discount factor for the TD error
 
         # TARGET NET STRATEGY
