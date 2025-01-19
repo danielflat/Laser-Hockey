@@ -169,7 +169,7 @@ class SoftActorCritic(Agent):
         action_size = self.get_num_actions(action_space)
 
         # Set up networks
-        self.actor = Actor(state_size, action_space, action_size, hidden_dim).to(device)
+        self.actor = Actor(state_size, action_space, action_size, hidden_dim, device=device).to(device)
         self.critic1 = Critic(state_size, action_size, hidden_dim).to(device)
         self.critic2 = Critic(state_size, action_size, hidden_dim).to(device)
 

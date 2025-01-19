@@ -617,8 +617,8 @@ def do_sac_hockey_training(env, agent, memory, opponent_pool: dict):
             total_episodes += 1
             state, info = env.reset(seed=SEED + total_episodes, one_starting=True)
             state_opponent = env.obs_agent_two()
-            state = torch.tensor(state, device=DEVICE, dtype=torch.float32)
-            state_opponent = torch.tensor(state_opponent, device=DEVICE, dtype=torch.float32)
+            state = torch.tensor(state, dtype=torch.float32)
+            state_opponent = torch.tensor(state_opponent, dtype=torch.float32)
 
             done = False
             episode_reward = 0.0
@@ -638,14 +638,14 @@ def do_sac_hockey_training(env, agent, memory, opponent_pool: dict):
                 done = (terminated or truncated)
 
                 # Convert to torch
-                action_t     = torch.tensor(action,     device=DEVICE, dtype=torch.float32)
-                reward_t     = torch.tensor(reward,     device=DEVICE, dtype=torch.float32)
-                done_t       = torch.tensor(done,       device=DEVICE, dtype=torch.int)
-                next_state_t = torch.tensor(next_state, device=DEVICE, dtype=torch.float32)
+                action_t     = torch.tensor(action,     dtype=torch.float32)
+                reward_t     = torch.tensor(reward,     dtype=torch.float32)
+                done_t       = torch.tensor(done,       dtype=torch.int)
+                next_state_t = torch.tensor(next_state, dtype=torch.float32)
 
-                action_opponent_t = torch.tensor(action_opponent, device=DEVICE, dtype=torch.float32)
-                reward_opponent_t = torch.tensor(reward_opponent, device=DEVICE, dtype=torch.float32)
-                next_state_opponent_t = torch.tensor(next_state_opponent, device=DEVICE, dtype=torch.float32)
+                action_opponent_t = torch.tensor(action_opponent, dtype=torch.float32)
+                reward_opponent_t = torch.tensor(reward_opponent, dtype=torch.float32)
+                next_state_opponent_t = torch.tensor(next_state_opponent, dtype=torch.float32)
 
                 # Store transition
                 memory.push(state, action_t, reward_t, next_state_t, done_t, info)
