@@ -45,7 +45,7 @@ SETTINGS = {
         # If None, you use a continuous action space, else you use a discrete action set
         "SELF_PLAY": False,  # If the agent should play against itself like in AlphaGo
         "USE_ALGO": SAC_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
-        "BUFFER_SIZE": 200_000,  # How many items can be stored in the replay buffer?
+        "BUFFER_SIZE": 500_000,  # How many items can be stored in the replay buffer?
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
         "NUM_TRAINING_EPISODES": 10_000,  # How many training episodes should be run?
@@ -68,8 +68,8 @@ SETTINGS = {
         # GENERAL SETTINGS
         "USE_BF16": False,  # Uses BF16 in forward pass or not. Makes it faster, but you have lower precision
         "USE_COMPILE": False,  # if torch.compile should be used for the networks
-        "OPT_ITER": 4,  # How many iterations should be done of gradient descent when calling agent.optimize()?
-        "BATCH_SIZE": 256,  # The batch size for doing gradient descent
+        "OPT_ITER": 1,  # How many iterations should be done of gradient descent when calling agent.optimize()?
+        "BATCH_SIZE": 128,  # The batch size for doing gradient descent
         "DISCOUNT": 0.9,  # The discount factor for the TD error
 
         # TARGET NET STRATEGY
@@ -178,10 +178,10 @@ SETTINGS = {
         "INIT_ALPHA": 0.2,
         "HIDDEN_DIM": 256,
         "CHECKPOINT_NAME": None,  # which checkpoint should be used for the SAC Hockey agent?
-        "NUM_EPOCHS": 3,
-        "NUM_EPISODES_PER_TRAINING_EPOCH": 2,
-        "NUM_EPISODES_PER_VALIDATION_EPOCH": 2,
-        "VALIDATION_FREQ": 1,
+        "NUM_EPOCHS": 1_000,
+        "NUM_EPISODES_PER_TRAINING_EPOCH": 20,
+        "NUM_EPISODES_PER_VALIDATION_EPOCH": 20,
+        "VALIDATION_FREQ": 10,
         "TRAIN_FREQ": 1
     },
     "MPO": {
