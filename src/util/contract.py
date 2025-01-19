@@ -63,6 +63,10 @@ def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int,
 
     return env
 
+def initValEnv():
+    env = h_env.HockeyEnv_BasicOpponent(weak_opponent=True)
+
+    return env
 
 def initAgent(use_algo: str, env, device: device,
               checkpoint_name: str | None,
