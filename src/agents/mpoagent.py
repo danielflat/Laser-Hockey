@@ -89,14 +89,25 @@ class Actor(nn.Module):
             cholesky_diag_index = torch.arange(self.da, dtype=torch.long) + 1
             #Calculate the index of the diagonal of the cholesky factorization
             cholesky_diag_index = (cholesky_diag_index * (cholesky_diag_index + 1)) // 2 - 1
+            
             #Ensure the diagonal of the cholesky factorization is positive
             cholesky_vector = cholesky_vector.clone()
-            cholesky_vector[:, cholesky_diag_index] = F.softplus(cholesky_vector[:, cholesky_diag_index])
+            cholesky_vector[:, cholesky_diag_index] = F.softplus(cholesky_vector[:, cholesky_diag_index]) + 1e-6
             
+            #stabelize off diagonal elements
             tril_indices = torch.tril_indices(row=self.da, col=self.da, offset=0)
+            cholesky_vector[:, tril_indices[0] != tril_indices[1]] = torch.clamp(
+                cholesky_vector[:, tril_indices[0] != tril_indices[1]], min=-1.0, max=1.0
+            )
+            
+            #Build Cholesky matrix
             cholesky = torch.zeros(size=(B, self.da, self.da), dtype=torch.float32)
             #Fill the lower triangular matrix of the cholesky factorization defined above
             cholesky[:, tril_indices[0], tril_indices[1]] = cholesky_vector
+            
+            # Add small value to diagonal
+            diag_indices = torch.arange(self.da)
+            cholesky[:, diag_indices, diag_indices] += 1e-6
             return mean, cholesky
         else:
             # 2. Output layer here softmax over all possible discrete actions da
@@ -127,7 +138,7 @@ class Critic(nn.Module):
     - Output layer for the Q value over all possible discrete actions da
     :param env: OpenAI gym environment
     """
-    def __init__(self, state_space, action_space: int, hidden_dim: int, continuous: bool):
+    def __init__(self, state_space, action_space, hidden_dim: int, continuous: bool):
         super(Critic, self).__init__()
         self.continuous = continuous
         self.ds = state_space.shape[0]
@@ -223,8 +234,8 @@ class MPOAgent(Agent):
         self.ds = self.state_space.shape[0]
         if self.continuous:
             self.da = int(np.prod(action_space.shape))
-            self.action_low = torch.tensor(action_space.low)
-            self.action_high = torch.tensor(action_space.high)
+            self.action_low = torch.tensor(action_space.low, device = self.device)
+            self.action_high = torch.tensor(action_space.high, device = self.device)
         else:
             self.da = action_space.n
         
@@ -234,7 +245,7 @@ class MPOAgent(Agent):
         self.ε_dual = mpo_settings.get("DUAL_CONSTAINT", 0.1) 
         self.ε_kl = mpo_settings.get("KL_CONSTRAINT", 0.1) 
         self.ε_kl_μ = mpo_settings.get("KL_CONSTRAINT_MEAN", 0.01) 
-        self.ε_kl_Σ = mpo_settings.get("KL_CONSTRAINT_VAR", 0.0001) 
+        self.ε_kl_Σ = mpo_settings.get("KL_CONSTRAINT_VAR", 0.001) 
         
         # Clipping values for lagrangian multipliers
         self.α_max = mpo_settings.get("ALPHA_MAX", 1.0)
@@ -243,15 +254,18 @@ class MPOAgent(Agent):
         
         #initialize variables to optimize
         self.η = np.random.rand() #E step, dual variable
-        self.η_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True) #discrete M step
-        self.η_µ_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True) #continuous M step
-        self.η_Σ_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True) #continuous M step
+        #self.η_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True, device = self.device) #discrete M step
+        #self.η_µ_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True, device = self.device) #continuous M step
+        #self.η_Σ_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True, device = self.device) #continuous M step
+        self.η_kl = 0.0
+        self.η_μ_kl = 0.0
+        self.η_Σ_kl = 0.0
 
         #Set up the actor and critic networks
-        self.actor = Actor(state_space, action_space, self.hidden_dim, self.continuous).to(device)
-        self.critic = Critic(state_space, action_space, self.hidden_dim, self.continuous).to(device)
-        self.target_actor = Actor(state_space, action_space, self.hidden_dim, self.continuous).to(device)
-        self.target_critic = Critic(state_space, action_space, self.hidden_dim, self.continuous).to(device)
+        self.actor = Actor(state_space, action_space, self.hidden_dim, self.continuous).to(self.device)
+        self.critic = Critic(state_space, action_space, self.hidden_dim, self.continuous).to(self.device)
+        self.target_actor = Actor(state_space, action_space, self.hidden_dim, self.continuous).to(self.device)
+        self.target_critic = Critic(state_space, action_space, self.hidden_dim, self.continuous).to(self.device)
         self.target_actor.load_state_dict(self.actor.state_dict())
         self.target_critic.load_state_dict(self.critic.state_dict())
         
@@ -260,10 +274,6 @@ class MPOAgent(Agent):
                                            parameters = self.actor.parameters())
         self.critic_optimizer = self.initOptim(optim = mpo_settings["CRITIC"]["OPTIMIZER"],
                                            parameters = self.critic.parameters())
-        self.lagrangian_optimizer_cont = self.initOptim(optim = mpo_settings["LAGRANGIANS"]["OPTIMIZER"],
-                                             parameters = [self.η_μ_kl, self.η_Σ_kl])
-        self.lagrangian_optimizer_disc = self.initOptim(optim = mpo_settings["LAGRANGIANS"]["OPTIMIZER"],
-                                                parameters = [self.η_kl])
 
         #Define Loss function
         self.criterion = self.initLossFunction(loss_name = mpo_settings["CRITIC"]["LOSS_FUNCTION"])
@@ -297,8 +307,6 @@ class MPOAgent(Agent):
                     π = MultivariateNormal(π_µ, scale_tril=π_A)  # (B, da)
                     # Sample action from the multivariate Gaussian
                     proposed_action = π.sample()
-                    #Add some noise
-                    #noise = torch.randn_like(proposed_action) * self.epsilon
                     # Ensure actions are within the valid range
                     action = torch.clamp(proposed_action, self.action_low, self.action_high)
                     action = proposed_action.numpy()[0]
@@ -412,20 +420,33 @@ class MPOAgent(Agent):
         μ = μ.unsqueeze(-1)  # (B, n, 1)
         Σi = Ai @ bt(Ai)  # (B, n, n)
         Σ = A @ bt(A)  # (B, n, n)
-        Σi_det = Σi.det()  # (B,)
-        Σ_det = Σ.det()  # (B,)
+        
+        # Add a small value to the diagonal for numerical stability
+        Σi = Σi + torch.eye(n).to(Σi.device) * 1e-6
+        Σ = Σ + torch.eye(n).to(Σ.device) * 1e-6
+        
         # determinant can be minus due to numerical calculation error
-        # https://github.com/daisatojp/mpo/issues/11
+        # https://github.com/daisatojp/mpo/issues/11. 
+        # Trying to fix inf values via logdet
+        Σi_det = torch.logdet(Σi).exp()
+        Σ_det = torch.logdet(Σ).exp()
         Σi_det = torch.clamp_min(Σi_det, 1e-6)
         Σ_det = torch.clamp_min(Σ_det, 1e-6)
+        # Σi_det = Σi.det()  # (B,)
+        # Σ_det = Σ.det()  # (B,)
+        
+        #Inverse of the covariance matrices
         Σi_inv = Σi.inverse()  # (B, n, n)
         Σ_inv = Σ.inverse()  # (B, n, n)
-
+    
         inner_μ = ((μ - μi).transpose(-2, -1) @ Σi_inv @ (μ - μi)).squeeze()  # (B,)
         inner_Σ = torch.log(Σ_det / Σi_det) - n + btr(Σ_inv @ Σi) # (B,)
+        
+        #Mean and covariance terms of the KL divergence
         C_μ = 0.5 * torch.mean(inner_μ)
         C_Σ = 0.5 * torch.mean(inner_Σ)
-        return C_μ, C_Σ, torch.mean(Σi_det), torch.mean(Σ_det)
+        
+        return C_μ, C_Σ
 
     def find_qij_dist(self, q_target: torch.Tensor, π_target: torch.Tensor) -> torch.Tensor:
         """
@@ -499,14 +520,11 @@ class MPOAgent(Agent):
         N = self.sample_action_num 
         #Nr of sampled states, here the Batch size
         K = self.batch_size  
-
         for _ in range(self.opt_iter):
-            
             # Sample from replay buffer, dimensions (K, ds), (K, da), (K,), (K, ds) 
             states, actions, rewards, next_states, dones, _ = memory.sample(batch_size=self.batch_size, randomly=True)
-            
             # Train the curiosity module 
-            self.icm.train(states, next_states, actions)
+            # self.icm.train(states, next_states, actions)
             
             # 1: Policy Evaluation: Update Critic (Q-function)
             loss_critic, q_estimates = self.critic_update(states, actions, dones, next_states, rewards, N)
@@ -522,7 +540,6 @@ class MPOAgent(Agent):
                 if self.continuous:
                     #We first get the mean and covariance of the target policy
                     b_μ, b_A = self.target_actor(states) # (K,) K batch size
-                    
                     dist = MultivariateNormal(b_μ, scale_tril=b_A) # (K,)
                     #sample N actions per state (we have K states)
                     sampled_actions = dist.sample((N,))  # (N, K, da)
@@ -556,20 +573,27 @@ class MPOAgent(Agent):
                     π2 = MultivariateNormal(loc=b_μ, scale_tril=A)  # (K,)
                     
                     #get the KL divergencies for the above defined distributions
-                    kl_μ, kl_Σ, Σi_det, Σ_det = self.gaussian_kl(μi=b_μ, μ=μ, Ai=b_A, A=A)
+                    kl_μ, kl_Σ = self.gaussian_kl(μi=b_μ, μ=μ, Ai=b_A, A=A)
                     
                     # Update lagrangian multipliers α by gradient descent
-                    lagrangian_loss = self.η_μ_kl * (self.ε_kl_μ - kl_μ) + self.η_Σ_kl * (self.ε_kl_Σ - kl_Σ)
-                    self.lagrangian_optimizer_cont.zero_grad()
-                    lagrangian_loss.backward(retain_graph=True)
-                    self.lagrangian_optimizer_cont.step()
                     
-                    η_μ_kl_np = self.η_μ_kl.detach().item()
-                    η_Σ_kl_np = self.η_Σ_kl.detach().item()
+                    #lagrangian_loss = self.η_μ_kl * (self.ε_kl_μ - kl_μ) + self.η_Σ_kl * (self.ε_kl_Σ - kl_Σ)
+                    #self.lagrangian_optimizer_cont.zero_grad()
+                    #lagrangian_loss.backward(retain_graph=True)
+                    #self.lagrangian_optimizer_cont.step()
                     
-                    # Clip the lagrangian multipliers to positive values
-                    η_μ_kl_np = np.clip(η_μ_kl_np, 0.0, self.α_μ_max)
-                    η_Σ_kl_np = np.clip(η_Σ_kl_np, 0.0, self.α_Σ_max)
+                    #self.η_μ_kl = torch.clamp(self.η_μ_kl.detach(), 0.0, self.α_μ_max)
+                    #self.η_Σ_kl = torch.clamp(self.η_Σ_kl.detach(), 0.0, self.α_Σ_max)
+                    
+                    #η_μ_kl_np = self.η_μ_kl.detach().item()
+                    #η_Σ_kl_np = self.η_Σ_kl.detach().item()
+                    
+                    self.η_μ_kl -= 1 * (self.ε_kl_μ - kl_μ).detach().item()
+                    self.η_Σ_kl -= 100 * (self.ε_kl_Σ - kl_Σ).detach().item()
+                    
+                    self.η_μ_kl = np.clip(self.η_μ_kl, 0.0, self.α_μ_max)
+                    self.η_Σ_kl = np.clip(self.η_Σ_kl, 0.0, self.α_Σ_max)
+                    
                     
                     #First we compute the known MLE Loss without the KL constraints 
                     #Note that here we have 2 actor objectives, so we have to compute the log prob for both
@@ -583,8 +607,8 @@ class MPOAgent(Agent):
                     # last eq of p.5
                     loss_actor = -(
                             loss_MLE
-                            + η_μ_kl_np * (self.ε_kl_μ - kl_μ)
-                            + η_Σ_kl_np * (self.ε_kl_Σ - kl_Σ)
+                            + self.η_μ_kl * (self.ε_kl_μ - kl_μ)
+                            + self.η_Σ_kl * (self.ε_kl_Σ - kl_Σ)
                     )
                 else:
                     #Creates action tensor of shape (da, K), where each of the K rows contains repeated indices ranging from 0 to self.da - 1
@@ -598,22 +622,25 @@ class MPOAgent(Agent):
                     #KL divergence btw the old and new policy, now a categorical one
                     kl = self.categorical_kl(p1=π_p, p2=b_p).detach()
                     
+                    if np.isnan(kl.item()):  # This should not happen
+                        raise RuntimeError('kl is nan')
+                    
                     #Inner optimization loop
-                    #self.η_kl -= self.α_scale * (self.ε_kl - kl).item()
-                    lagrangian_loss = self.η_kl * (self.ε_kl - kl)
-                    self.lagrangian_optimizer_disc.zero_grad()
-                    lagrangian_loss.backward(retain_graph=True)
-                    self.lagrangian_optimizer_disc.step()
-                    η_kl_np = self.η_kl.detach().item()
+                    self.η_kl -= 1.0 * (self.ε_kl - kl).item()
+                    #lagrangian_loss = self.η_kl * (self.ε_kl - kl)
+                    #self.lagrangian_optimizer_disc.zero_grad()
+                    #lagrangian_loss.backward(retain_graph=True)
+                    #self.lagrangian_optimizer_disc.step()
+                    #η_kl_np = self.η_kl.detach().item()
                     
                     #Clipping
-                    η_kl = np.clip(η_kl_np, 0.0, self.α_max)
+                    self.η_kl = np.clip(self.η_kl, 0.0, self.α_max)
                     
                     #MLE loss
                     loss_MLE = torch.mean(qij * π_log) # (K, da)
                     
                     #Final loss
-                    loss_actor = -(loss_MLE + η_kl_np * (self.ε_kl - kl))
+                    loss_actor = -(loss_MLE + self.η_kl * (self.ε_kl - kl))
                 
                 self.actor_optimizer.zero_grad()
                 loss_actor.backward()
@@ -622,7 +649,7 @@ class MPOAgent(Agent):
                 self.actor_optimizer.step()
             
             #Keep track of the losses
-            losses.append([loss_critic.item()])
+            losses.append([loss_critic.item(), loss_actor.item()])
             
         #Update the epsilon value
         self.adjust_epsilon(episode_i)
@@ -630,8 +657,15 @@ class MPOAgent(Agent):
         #update the target networks
         if episode_i % self.target_net_update_freq == 0:
             self._copy_nets()
-                
-        return losses 
+
+        sum_up_stats = {
+            "Policy Loss": np.mean([l[1] for l in losses]),
+            "Critic Loss": np.mean([l[0] for l in losses]),
+            "Langragian_µ": self.η_μ_kl,
+            "Langragian_Σ": self.η_Σ_kl,
+            "Dual Variable": self.η,
+        }
+        return sum_up_stats
     
     def setMode(self, eval: bool = False) -> None:
         """
@@ -688,6 +722,8 @@ class MPOAgent(Agent):
         self.critic.load_state_dict(checkpoint["critic"])
         self.target_actor.load_state_dict(checkpoint["target_actor"])
         self.target_critic.load_state_dict(checkpoint["target_critic"])
+        self.η_μ_kl = checkpoint["lagrangian_µ"]
+        self.η_Σ_kl = checkpoint["lagrangian_Σ"]
 
     def export_checkpoint(self) -> dict:
         checkpoint = {
@@ -695,5 +731,7 @@ class MPOAgent(Agent):
             "critic": self.critic.state_dict(),
             "target_actor": self.target_actor.state_dict(),
             "target_critic": self.target_critic.state_dict(),
+            "lagrangian_µ": self.η_μ_kl,
+            "lagrangian_Σ": self.η_Σ_kl,
         }
         return checkpoint
