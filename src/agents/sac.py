@@ -197,7 +197,7 @@ class SoftActorCritic(Agent):
         self.critic1_optimizer = self.initOptim(critic_optim_cfg, self.critic1.parameters(), disable_weight_decay=True)
         self.critic2_optimizer = self.initOptim(critic_optim_cfg, self.critic2.parameters(), disable_weight_decay=True)
         if self.learn_alpha:
-            self.alpha_optimizer = self.initOptim(alpha_optim_cfg, [self.log_alpha])
+            self.alpha_optimizer = self.initOptim(alpha_optim_cfg, [self.log_alpha], disable_weight_decay=True)
 
         # Define a loss function (MSE for Q-updates)
         # You can also choose SmoothL1 if you prefer.
