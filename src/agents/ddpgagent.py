@@ -9,6 +9,7 @@ from typing import Any, Dict
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util.directoryutil import get_path
+from src.util.layerutil import NormedLinear
 from src.util.noiseutil import initNoise
 
 """
@@ -20,16 +21,15 @@ TODOS:
 
 
 class Actor(nn.Module):
-    def __init__(self, observation_size: int, action_size: int):
+    def __init__(self, state_size: int, action_size: int):
         super().__init__()
 
         self.actor_net = nn.Sequential(
-            nn.Linear(observation_size, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, action_size),
-            nn.Tanh())
+            NormedLinear(in_features = state_size, out_features = 512, activation_function = "Mish"),
+            NormedLinear(in_features = 512, out_features = 512, activation_function = "Mish"),
+            nn.Linear(512, action_size, bias = True),
+            nn.Tanh()  # Tanh is important here
+        )
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
         action = self.actor_net(state)
@@ -37,15 +37,14 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, observation_size: int, action_size: int):
+    def __init__(self, state_size: int, action_size: int):
         super().__init__()
 
         self.critic_net = nn.Sequential(
-            nn.Linear(observation_size + action_size, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 1))
+            NormedLinear(in_features = state_size + action_size, out_features = 512, dropout = 0.01,
+                         activation_function = "Mish"),
+            NormedLinear(in_features = 512, out_features = 512, activation_function = "Mish"),
+            nn.Linear(512, 1, bias = True))
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         q_value = self.critic_net(input)

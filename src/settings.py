@@ -4,7 +4,7 @@ This is the config file for the training run main.py.
 import torch
 from time import localtime, strftime
 
-from src.util.constants import ADAM, DDPG_ALGO, DQN_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
+from src.util.constants import ADAM, ADAMW, DDPG_ALGO, DQN_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
 
 _DEFAULT_OPTIMIZER = {
@@ -40,11 +40,11 @@ SETTINGS = {
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
 
         # Environment settings
-        "USE_ENV": HOCKEY,  # The used environment
+        "USE_ENV": PENDULUM,  # The used environment
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
-        "SELF_PLAY": True,  # If the agent should play against itself like in AlphaGo
+        "SELF_PLAY": False,  # If the agent should play against itself like in AlphaGo
         "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
 
         # Defining training loop
@@ -54,7 +54,8 @@ SETTINGS = {
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
         "SHOW_PLOTS": False,  # If you want to plot statistics after each episode
-        "CURIOSITY": None,  #Proportion of curiosity reward calculated by ICM to be added to the real reward. If None no curiosity exploration is used
+        "CURIOSITY": None,
+        # Proportion of curiosity reward calculated by ICM to be added to the real reward. If None no curiosity exploration is used
 
         # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
         # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
@@ -114,7 +115,7 @@ SETTINGS = {
         # Specific settings for the actor network. Each network e.g. can have another optimizer
         "ACTOR": {
             "OPTIMIZER": {
-                "OPTIM_NAME": ADAM,
+                "OPTIM_NAME": ADAMW,
                 "LEARNING_RATE": 3e-4,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
@@ -126,7 +127,7 @@ SETTINGS = {
         # Specific settings for the critic network
         "CRITIC": {
             "OPTIMIZER": {
-                "OPTIM_NAME": ADAM,  # Which optimizer to use
+                "OPTIM_NAME": ADAMW,  # Which optimizer to use
                 "LEARNING_RATE": 3e-3,  # The learning rate for the agent
                 "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
                 "EPS": 1e-8,  # eps Adam param
@@ -166,8 +167,8 @@ SETTINGS = {
         "POLICY_DELAY": 2,  # The delay of the policy optimization
         "NOISE_CLIP": 0.1,  # The gaussian noise clip value
         "HIDDEN_DIM": 128,
-        "NUM_LAYERS": 5, #num hidden layers, only changed if target_net == false
-        "BATCHNORM_MOMENTUM": 0.9, #momentum for batchnorm, only used if target_net == false
+        "NUM_LAYERS": 5,  # num hidden layers, only changed if target_net == false
+        "BATCHNORM_MOMENTUM": 0.9,  # momentum for batchnorm, only used if target_net == false
         "NOISE": _DEFAULT_NOISE,
         "CHECKPOINT_NAME": None,  # which checkpoint should be used for the TD3 Hockey agent?
     },
@@ -220,7 +221,15 @@ SETTINGS = {
         "CHECKPOINT_NAME": None,  # which checkpoint should be used for the PPO Hockey agent?
     },
     "TD_MPC2": {
-        "OPTIMIZER": _DEFAULT_OPTIMIZER,
+        "OPTIMIZER": {
+            "OPTIM_NAME": ADAM,  # Which optimizer to use #TODO: TRY IT WITH ADAMW instead
+            "LEARNING_RATE": 3e-4,  # The learning rate for the agent
+            "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
+            "EPS": 1e-8,  # eps Adam param
+            "WEIGHT_DECAY": 1e-2,  # The weight decay rate
+            "USE_FUSION": torch.cuda.is_available()
+            # if we have CUDA, we can use the fusion implementation of Adam -> Faster
+        },
         "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
         "NOISE": _DEFAULT_NOISE,
         "HORIZON": 6,  # How many steps do we want to consider while doing predictions

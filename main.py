@@ -733,12 +733,12 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
             # df: Sometimes, the reward yields small numbers because in the env, they also consider the distance to the puck.
             # In my suggestion, this is not a good thing to do because it sets an unnecessary target to the model.
             # Therefore, we normalize it to 0 for simplicity.
-            # if info["winner"] == 1:
-            #     reward = 10
-            # elif info["winner"] == -1:
-            #     reward = -10
-            # else:
-            #     reward = 0
+            if info["winner"] == 1:
+                reward = 10
+            elif info["winner"] == -1:
+                reward = -10
+            else:
+                reward = 0
 
             # track the total reward
             total_reward += reward
@@ -826,7 +826,7 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
                 f" Opponent: {opponent_name} | {other_statistics}")
 
         # (Optional): After every 100 episodes ...
-        if i_training % 5 == 0:
+        if i_training % 100 == 0:
             # ... (Optional): If self play is activated, you update the self opponent with the current weights
             if SELF_PLAY:
                 self_opponent.import_checkpoint(agent.export_checkpoint())
@@ -1046,8 +1046,8 @@ def main():
 
         opponent_pool = {
             RANDOM_ALGO: random_agent,
-            WEAK_COMP_ALGO: weak_comp_agent,
-            STRONG_COMP_ALGO: strong_comp_agent,
+            # WEAK_COMP_ALGO: weak_comp_agent,
+            # STRONG_COMP_ALGO: strong_comp_agent,
             # DQN_ALGO: dqn_agent,
             # PPO_ALGO: ppo_agent,
             # DDPG_ALGO: ddpg_agent,

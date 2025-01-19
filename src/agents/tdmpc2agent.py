@@ -12,6 +12,7 @@ from typing import Any, Dict
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util import mathutil
+from src.util.layerutil import NormedLinear
 from src.util.noiseutil import initNoise
 
 """
@@ -27,57 +28,6 @@ def _log_std_clamp(log_std, min_value = -10, max_value = 2):
     """Clamp log_std to a specific range."""
     return torch.clamp(log_std, min_value, max_value)
 
-
-class SimNorm(nn.Module):
-    def __init__(self, temperature):
-        super().__init__()
-        self.temperature = temperature
-
-    def forward(self, x: torch.Tensor, V = 8):
-        # shape = x.shape
-        # x = x.view(*shape[:-1], -1, V)
-        # x = F.softmax(x / self.temperature, dim = -1)
-        # return x.view(*shape)
-        x = F.softmax(x / self.temperature, dim = -1)
-        return x
-
-
-class NormedLinear(nn.Module):
-    """
-    Step 01: Linear Layer
-    Step 02 (Optional): Dropout
-    Step 03: LayerNorm
-    Step 04: Activation Function (Mish and SimNorm are supported)
-    """
-
-    def __init__(self, in_features: int, out_features: int, activation_function: str, bias: bool = False,
-                 dropout: float = 0.0, temperature: float = 1):
-        super().__init__()
-        self.linear = nn.Linear(in_features, out_features, bias = bias)
-        self.dropout = nn.Dropout(dropout, inplace = False) if dropout else None
-        self.layer_norm = nn.LayerNorm(out_features)
-
-        if activation_function == "Mish":
-            self.activation_function = nn.Mish(inplace = False)
-        elif activation_function == "SimNorm":
-            self.activation_function = SimNorm(temperature = temperature)
-        else:
-            raise NotImplementedError(f"Activation function {activation_function} not implemented.")
-
-    def forward(self, x):
-        x = self.linear(x)
-        if self.dropout:
-            x = self.dropout(x)
-        x = self.layer_norm(x)
-        x = self.activation_function(x)
-        return x
-
-    # def __repr__(self):
-    #     repr_dropout = f", dropout={self.dropout.p}" if self.dropout else ""
-    #     return f"NormedLinear(in_features={self.in_features}, " \
-    #            f"out_features={self.out_features}, " \
-    #            f"bias={self.bias is not None}{repr_dropout}, " \
-    #            f"act={self.act.__class__.__name__})"
 
 
 # TODO
@@ -121,7 +71,6 @@ class DynamicsNet(nn.Module):
         return next_latent_state
 
 
-# TODO
 class RewardNet(nn.Module):
     def __init__(self, latent_size: int, action_size: int):
         super().__init__()
@@ -142,7 +91,6 @@ class RewardNet(nn.Module):
         return latent_state
 
 
-# TODO
 class ActorNet(nn.Module):
     def __init__(self, latent_size: int, action_size: int):
         super().__init__()
@@ -150,7 +98,7 @@ class ActorNet(nn.Module):
         self.actor_net = nn.Sequential(
             NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
             NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
-            nn.Linear(latent_size, 2 * action_size, bias = True)
+            nn.Linear(latent_size, 2 * action_size, bias = True),
         )  # mean, std
 
     def forward(self, latent_state: torch.Tensor) -> torch.Tensor:
@@ -161,7 +109,6 @@ class ActorNet(nn.Module):
         return output
 
 
-# TODO
 class CriticNet(nn.Module):
     def __init__(self, latent_size: int, action_size: int):
         super().__init__()
