@@ -66,6 +66,7 @@ def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: int)
 
 
 def initAgent(use_algo: str, env, device: device,
+              checkpoint_name: str | None,
               agent_settings: dict = AGENT_SETTINGS, dqn_settings: dict = DQN_SETTINGS,
               ppo_settings: dict = PPO_SETTINGS,
               ddpg_settings: dict = DDPG_SETTINGS, td3_settings: dict = TD3_SETTINGS, sac_settings: dict = SAC_SETTINGS,
@@ -78,21 +79,23 @@ def initAgent(use_algo: str, env, device: device,
     state_space = env.observation_space
     action_space = env.action_space
 
+    agent = None
+
     if use_algo in SUPPORTED_ALGORITHMS:
         if use_algo == DQN_ALGO:
-            return DQNAgent(state_space = state_space, action_space = action_space, agent_settings = agent_settings,
+            agent = DQNAgent(state_space = state_space, action_space = action_space, agent_settings = agent_settings,
                             dqn_settings = dqn_settings, device = device)
         elif use_algo == PPO_ALGO:
-            return PPOAgent(state_space = state_space, action_space = action_space,
+            agent = PPOAgent(state_space = state_space, action_space = action_space,
                             agent_settings = agent_settings, ppo_settings = ppo_settings, device = device)
         elif use_algo == DDPG_ALGO:
-            return DDPGAgent(observation_space = env.observation_space, action_space = env.action_space,
+            agent = DDPGAgent(observation_space = env.observation_space, action_space = env.action_space,
                              agent_settings = agent_settings, ddpg_settings = ddpg_settings, device = device)
         elif use_algo == TD3_ALGO:
-            return TD3Agent(state_space = state_space, action_space = action_space,
+            agent = TD3Agent(state_space = state_space, action_space = action_space,
                             agent_settings = agent_settings, td3_settings = td3_settings, device = device)
         elif use_algo == SAC_ALGO:
-            return SoftActorCritic(
+            agent = SoftActorCritic(
                 state_space = state_space,
                 action_space = action_space,
                 agent_settings = agent_settings,
@@ -100,7 +103,7 @@ def initAgent(use_algo: str, env, device: device,
                 sac_settings = sac_settings
             )
         elif use_algo == MPO_ALGO:
-            return MPOAgent(
+            agent = MPOAgent(
                 state_space = state_space,
                 action_space = action_space,
                 agent_settings = agent_settings,
@@ -108,13 +111,13 @@ def initAgent(use_algo: str, env, device: device,
                 mpo_settings = mpo_settings
             )
         elif use_algo == RANDOM_ALGO:
-            return RandomAgent(env = env, agent_settings = agent_settings, device = device)
+            agent = RandomAgent(env = env, agent_settings = agent_settings, device = device)
         elif use_algo == WEAK_COMP_ALGO:
-            return CompAgent(is_Weak = True, agent_settings = agent_settings, device = device)
+            agent = CompAgent(is_Weak = True, agent_settings = agent_settings, device = device)
         elif use_algo == STRONG_COMP_ALGO:
-            return CompAgent(is_Weak = False, agent_settings = agent_settings, device = device)
+            agent = CompAgent(is_Weak = False, agent_settings = agent_settings, device = device)
         elif use_algo == TDMPC2_ALGO:
-            return TDMPC2Agent(
+            agent = TDMPC2Agent(
                 state_space = state_space,
                 action_space = action_space,
                 agent_settings = agent_settings,
@@ -123,6 +126,10 @@ def initAgent(use_algo: str, env, device: device,
             )
     else:
         raise Exception(f"The algorithm '{use_algo}' is not supported! Please choose another one!")
+
+    if checkpoint_name is not None:
+        agent.loadModel(checkpoint_name)
+    return agent
 
 
 def setupLogging(model_name: str):

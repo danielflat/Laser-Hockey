@@ -8,9 +8,12 @@ from itertools import count
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
-from src.settings import AGENT_SETTINGS, MAIN_SETTINGS, SETTINGS
-from src.util.constants import DDPG_ALGO, HOCKEY, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
-    TDMPC2_ALGO, WEAK_COMP_ALGO
+from src.settings import AGENT_SETTINGS, DDPG_SETTINGS, DQN_SETTINGS, MAIN_SETTINGS, MPO_SETTINGS, PPO_SETTINGS, \
+    SAC_SETTINGS, \
+    SETTINGS, \
+    TD3_SETTINGS, TD_MPC2_SETTINGS
+from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
+    TD3_ALGO, TDMPC2_ALGO, WEAK_COMP_ALGO
 from src.util.contract import initAgent, initEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics
 
@@ -877,25 +880,24 @@ def main():
     if USE_TF32:
         torch.set_float32_matmul_precision("high")
 
-    # Initialize the environment
-    env = initEnv(USE_ENV, RENDER_MODE, NUMBER_DISCRETE_ACTIONS)
-
-    # Choose which algorithm to pick to initialize the agent
-    agent = initAgent(USE_ALGO, env = env, device = DEVICE, agent_settings=AGENT_SETTINGS)
-
-    # Init the memory
-    memory = ReplayMemory(capacity = BUFFER_SIZE, device = DEVICE)
-
     # Setup Logging
     setupLogging(model_name = MODEL_NAME)
 
     # Log the settings.py such that we can save the settings under which we did the training
     logging.info(yaml.dump(SETTINGS, default_flow_style = False, sort_keys = False, allow_unicode = True))
 
+    # Initialize the environment
+    env = initEnv(USE_ENV, RENDER_MODE, NUMBER_DISCRETE_ACTIONS)
+
+    # Choose which algorithm to pick to initialize the agent
+    agent = initAgent(USE_ALGO, env = env, device = DEVICE, agent_settings = AGENT_SETTINGS,
+                      checkpoint_name = CHECKPOINT_NAME)
+
+    # Init the memory
+    memory = ReplayMemory(capacity = BUFFER_SIZE, device = DEVICE)
+
     # Training loop
     agent.setMode(eval = False)  # Set the agent in training mode
-    if CHECKPOINT_NAME is not None:
-        agent.loadModel(CHECKPOINT_NAME)
     logging.info(f"The configuration was valid! Start training 💪")
 
     opponent_pool = None
@@ -904,16 +906,16 @@ def main():
     # If we play Hockey, our training loop is different, because we use self play to train our agent
     if USE_ENV == HOCKEY:
         # Only in the Hockey env, we need some opponent_pool to play against
-        random_agent = initAgent(use_algo = RANDOM_ALGO, env = env, device = DEVICE)
-        weak_comp_agent = initAgent(use_algo = WEAK_COMP_ALGO, env = env, device = DEVICE)
-        strong_comp_agent = initAgent(use_algo = STRONG_COMP_ALGO, env = env, device = DEVICE)
-        # dqn_agent = initAgent(use_algo = DQN_ALGO, env = env, device = DEVICE)
-        # ppo_agent = initAgent(use_algo = PPO_ALGO, env = env, device = DEVICE)
-        # ddpg_agent = initAgent(use_algo = DDPG_ALGO, env = env, device = DEVICE)
-        # td3_agent = initAgent(use_algo = TD3_ALGO, env = env, device = DEVICE)
-        # sac_agent = initAgent(use_algo = SAC_ALGO, env = env, device = DEVICE)
-        # mpo_agent = initAgent(use_algo = MPO_ALGO, env = env, device = DEVICE)
-        # tdmpc2_agent = initAgent(use_algo = TDMPC2_ALGO, env = env, device = DEVICE)
+        random_agent = initAgent(use_algo = RANDOM_ALGO, env = env, device = DEVICE, checkpoint_name = None)
+        weak_comp_agent = initAgent(use_algo = WEAK_COMP_ALGO, env = env, device = DEVICE, checkpoint_name = None)
+        strong_comp_agent = initAgent(use_algo = STRONG_COMP_ALGO, env = env, device = DEVICE, checkpoint_name = None)
+        # dqn_agent = initAgent(use_algo = DQN_ALGO, env = env, device = DEVICE, checkpoint_name = DQN_SETTINGS["CHECKPOINT_NAME"])
+        # ppo_agent = initAgent(use_algo = PPO_ALGO, env = env, device = DEVICE, checkpoint_name = PPO_SETTINGS["CHECKPOINT_NAME"])
+        # ddpg_agent = initAgent(use_algo = DDPG_ALGO, env = env, device = DEVICE, checkpoint_name = DDPG_SETTINGS["CHECKPOINT_NAME"])
+        # td3_agent = initAgent(use_algo = TD3_ALGO, env = env, device = DEVICE, checkpoint_name = TD3_SETTINGS["CHECKPOINT_NAME"])
+        # sac_agent = initAgent(use_algo = SAC_ALGO, env = env, device = DEVICE, checkpoint_name = SAC_SETTINGS["CHECKPOINT_NAME"])
+        # mpo_agent = initAgent(use_algo = MPO_ALGO, env = env, device = DEVICE, checkpoint_name = MPO_SETTINGS["CHECKPOINT_NAME"])
+        # tdmpc2_agent = initAgent(use_algo = TDMPC2_ALGO, env = env, device = DEVICE, checkpoint_name = TD_MPC2_SETTINGS["CHECKPOINT_NAME"])
 
         # Currently, we do not allow the opponent networks to train as well. This might be an extra feature
         random_agent.setMode(eval = True)
@@ -925,6 +927,7 @@ def main():
         # td3_agent.setMode(eval = True)
         # sac_agent.setMode(eval = True)
         # mpo_agent.setMode(eval = True)
+        # tdmpc2_agent.setMode(eval = True)
 
         opponent_pool = {
             RANDOM_ALGO: random_agent,
@@ -936,11 +939,12 @@ def main():
             # TD3_ALGO: td3_agent,
             # SAC_ALGO: sac_agent,
             # MPO_ALGO: mpo_agent,
+            # TDMPC2_ALGO: mpo_agent,
         }
 
         # if you want to use self-play, we have to init the self opponent agent
         if SELF_PLAY:
-            self_opponent = initAgent(use_algo = USE_ALGO, env = env, device = DEVICE)
+            self_opponent = initAgent(use_algo = USE_ALGO, env = env, device = DEVICE, checkpoint_name = None)
             self_opponent.setMode(eval = True)
             self_opponent.import_checkpoint(agent.export_checkpoint())
 

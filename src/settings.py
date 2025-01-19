@@ -4,8 +4,8 @@ This is the config file for the training run main.py.
 import torch
 from time import localtime, strftime
 
-from src.util.constants import ADAM, DDPG_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
-    SMOOTH_L1_LOSS
+from src.util.constants import ADAM, DDPG_ALGO, DQN_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
+    SMOOTH_L1_LOSS, TDMPC2_ALGO
 
 _DEFAULT_OPTIMIZER = {
     "OPTIM_NAME": ADAM,  # Which optimizer to use
@@ -40,12 +40,12 @@ SETTINGS = {
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
 
         # Environment settings
-        "USE_ENV": PENDULUM,  # The used environment
+        "USE_ENV": HOCKEY,  # The used environment
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
         "SELF_PLAY": True,  # If the agent should play against itself like in AlphaGo
-        "USE_ALGO": DDPG_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
+        "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
 
         # Defining training loop
         "BUFFER_SIZE": 1_000,  # How many items can be stored in the replay buffer?
@@ -100,12 +100,14 @@ SETTINGS = {
     "DQN": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
         "LOSS_FUNCTION": SMOOTH_L1_LOSS,
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the DQN Hockey agent?
     },
     # The specific settings for the PPO agent
     "PPO": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
         "LOSS_FUNCTION": MSE_LOSS,
         "EPS_CLIP": 0.2,  # the clipping hyperparam for the ppo algo
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the PPO Hockey agent?
     },
     # The specific settings for the DDPG agent
     "DDPG": {
@@ -135,7 +137,7 @@ SETTINGS = {
             "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
         "NOISE": _DEFAULT_NOISE,
-
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the DDPG Hockey agent?
     },
     # The specific settings for the TD3 agent
     "TD3": {
@@ -166,7 +168,8 @@ SETTINGS = {
         "HIDDEN_DIM": 128,
         "NUM_LAYERS": 5, #num hidden layers, only changed if target_net == false
         "BATCHNORM_MOMENTUM": 0.9, #momentum for batchnorm, only used if target_net == false
-        "NOISE": _DEFAULT_NOISE
+        "NOISE": _DEFAULT_NOISE,
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the TD3 Hockey agent?
     },
     "SAC": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
@@ -174,7 +177,8 @@ SETTINGS = {
         "LEARN_ALPHA": True,  # Whether to learn the temperature alpha
         "TARGET_ENTROPY": None,  # Target entropy for automatic alpha
         "INIT_ALPHA": 0.2,
-        "HIDDEN_DIM": 256
+        "HIDDEN_DIM": 256,
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the SAC Hockey agent?
     },
     "MPO": {
         "ACTOR": {
@@ -211,8 +215,9 @@ SETTINGS = {
         },
         "SAMPLE_ACTION_NUM": 32,  # Number of actions to sample for nonparametric policy optimization
         "MSTEP_ITER": 1,
-        "DISCRETE": False
+        "DISCRETE": False,
         # All other Hyperparameters are set in the MPO class
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the PPO Hockey agent?
     },
     "TD_MPC2": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
@@ -236,6 +241,7 @@ SETTINGS = {
         "CONSISTENCY_COEF": 20,
         "REWARD_COEF": 0.1,
         "Q_COEF": 0.1,
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the TD-MPC-2 Hockey agent?
     }
 }
 MAIN_SETTINGS = SETTINGS["MAIN"]
