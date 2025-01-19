@@ -539,7 +539,7 @@ def warmup_sac_hockey(
     To reduce overhead, we do local buffering and then push them in bulk.
     """
     if min_buffer_size is None:
-        min_buffer_size = int(0.25 * BUFFER_SIZE)
+        min_buffer_size = int(0.1 * BUFFER_SIZE)
 
     logging.info(f"Starting warm-up phase; collecting random transitions until memory >= {min_buffer_size}.")
 
