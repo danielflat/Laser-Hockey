@@ -32,13 +32,12 @@ def _log_std_clamp(log_std, min_value = -10, max_value = 2):
 
 # TODO
 class EncoderNet(nn.Module):
-    def __init__(self, state_size: int, latent_size: int, temperature: float):
+    def __init__(self, state_size: int, latent_size: int):
         super().__init__()
 
         self.encoder_net = nn.Sequential(
             NormedLinear(in_features = state_size, out_features = 256, activation_function = "Mish"),
-            NormedLinear(in_features = 256, out_features = latent_size, activation_function = "SimNorm",
-                         temperature = temperature),
+            NormedLinear(in_features = 256, out_features = latent_size, activation_function = "SimNorm"),
         )
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
@@ -51,15 +50,14 @@ class EncoderNet(nn.Module):
 
 # TODO
 class DynamicsNet(nn.Module):
-    def __init__(self, latent_size: int, action_size: int, temperature: float):
+    def __init__(self, latent_size: int, action_size: int):
         super().__init__()
 
         self.encoder_net = nn.Sequential(
             NormedLinear(in_features = latent_size + action_size, out_features = latent_size,
                          activation_function = "Mish"),
             NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
-            NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "SimNorm",
-                         temperature = temperature),
+            NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "SimNorm"),
         )
 
     def forward(self, latent_state: torch.Tensor, latent_action: torch.Tensor) -> torch.Tensor:
@@ -173,10 +171,8 @@ class TDMPC2Agent(Agent, nn.Module):
         self.reward_coef = td_mpc2_settings["REWARD_COEF"]
         self.q_coef = td_mpc2_settings["Q_COEF"]
 
-        self.encoder_net = EncoderNet(state_size = state_size, latent_size = self.latent_size,
-                                      temperature = self.temperature).to(self.device)
-        self.dynamics_net = DynamicsNet(latent_size = self.latent_size, action_size = self.action_size,
-                                        temperature = self.temperature).to(self.device)
+        self.encoder_net = EncoderNet(state_size = state_size, latent_size = self.latent_size).to(self.device)
+        self.dynamics_net = DynamicsNet(latent_size = self.latent_size, action_size = self.action_size).to(self.device)
         self.reward_net = RewardNet(latent_size = self.latent_size, action_size = self.action_size).to(self.device)
 
         self.policy_net = ActorNet(latent_size = self.latent_size, action_size = self.action_size).to(self.device)
@@ -202,6 +198,11 @@ class TDMPC2Agent(Agent, nn.Module):
         self.policy_optim = self.initOptim(optim = td_mpc2_settings["OPTIMIZER"],
                                            parameters = self.policy_net.parameters())
 
+        self.consistency_criterion = torch.nn.MSELoss()
+        self.reward_criterion = torch.nn.CrossEntropyLoss()
+        self.q_criterion = torch.nn.CrossEntropyLoss()
+
+
         if self.USE_COMPILE:
             logging.info("Start compiling the TD-MPC2 agent.")
             self._update = torch.compile(self._update)
@@ -220,7 +221,7 @@ class TDMPC2Agent(Agent, nn.Module):
 
         During training, we add noise to the proposed action.
         """
-        proposed_action = self._plan(state)
+        proposed_action = self._plan(state, is_training = self.isEval)
         # TODO: df: Should we really noise it? Unclear yet!
         if not self.isEval:
             noise = self.noise_factor * self.noise.sample()
@@ -310,7 +311,7 @@ class TDMPC2Agent(Agent, nn.Module):
 
     # TODO
     @torch.no_grad()
-    def _plan(self, state: torch.Tensor) -> np.ndarray:
+    def _plan(self, state: torch.Tensor, is_training: bool) -> np.ndarray:
         """
         Plan proposed_action sequence of action_sequence_samples using the learned world model.
 
@@ -321,26 +322,55 @@ class TDMPC2Agent(Agent, nn.Module):
         Returns:
             torch.Tensor: Action to take in the environment at the current timestep.
         """
-        # Step 01: Sample trajectories based on our policy
+        # Sample policy trajectories
         latent_state = self.encoder_net(state)
-        mean, log_std = self.policy_net(latent_state).chunk(2, dim = -1)  # Use the policy network as a prior
-        std = log_std.exp()
+        if self.num_trajectories > 0:
+            pi_actions = torch.empty(self.horizon, self.num_trajectories, self.action_size, device = self.device)
+            _latent_state = latent_state.repeat(self.num_trajectories, 1)
+            for t in range(self.horizon - 1):
+                pi_actions[t], _ = self._predict_action(_latent_state)
+                _latent_state = self.dynamics_net(_latent_state, pi_actions[t])
+            pi_actions[-1], _ = self._predict_action(_latent_state)
 
-        # reparameterization trick: We take the mean and std as priors for planning
-        # we plan #horizon steps in the future by sampling some future actions
-        action_sequence_samples = mean + std * torch.randn(self.num_samples, self.horizon, self.action_size,
-                                                           device = self.device)
+        # Initialize state and parameters
+        latent_state = latent_state.repeat(self.num_samples, 1)
+        mean = torch.zeros(self.horizon, self.action_size, device = self.device)
+        std = torch.full((self.horizon, self.action_size), self.max_std, dtype = torch.float, device = self.device)
+        actions = torch.empty(self.horizon, self.num_samples, self.action_size, device = self.device)
+        if self.num_trajectories > 0:
+            actions[:, :self.num_trajectories] = pi_actions
 
-        # we evaluate our action sequences by looking for the one with the highest q-value estimate
-        q_values = self._estimate_q_of_action_sequence(latent_state, action_sequence_samples)
+        # Iterate MPPI
+        for _ in range(self.mmpi_iterations):
+            # Sample actions
+            r = torch.randn(self.horizon, self.num_samples - self.num_trajectories, self.action_size,
+                            device = std.device)
+            actions_sample = mean.unsqueeze(1) + std.unsqueeze(1) * r
+            actions_sample = actions_sample.clamp(self.min_action_torch, self.max_action_torch)
+            actions[:, self.num_trajectories:] = actions_sample
 
-        # sample the next immediate action w.r.t. the highest q-value estimate
-        best_idx = q_values.argmax(dim = 0)
-        best_action = action_sequence_samples[best_idx, 0].squeeze(dim = 0)  # Best immediate action
+            # Compute elite actions
+            value = self._estimate_q_of_action_sequence(latent_state, actions).nan_to_num(0)
+            elite_idxs = torch.topk(value.squeeze(1), self.num_elites, dim = 0).indices
+            elite_value, elite_actions = value[elite_idxs], actions[:, elite_idxs]
 
-        # we normalize the action
-        normalized_action = torch.clamp(best_action, self.min_action_torch, self.max_action_torch)
-        return normalized_action.cpu().numpy()
+            # Update parameters
+            max_value = elite_value.max(0).values
+            score = torch.exp(self.temperature * (elite_value - max_value))
+            score = score / score.sum(0)
+            mean = (score.unsqueeze(0) * elite_actions).sum(dim = 1) / (score.sum(0) + 1e-9)
+            std = ((score.unsqueeze(0) * (elite_actions - mean.unsqueeze(1)) ** 2).sum(dim = 1) / (
+                    score.sum(0) + 1e-9)).sqrt()
+            std = std.clamp(self.min_std, self.max_std)
+
+        # Select action
+        rand_idx = mathutil.gumbel_softmax_sample(
+            score.squeeze(1))  # gumbel_softmax_sample is compatible with cuda graphs
+        actions = torch.index_select(elite_actions, 1, rand_idx).squeeze(1)
+        a, std = actions[0], std[0]
+        if is_training:
+            a = a + std * torch.randn(self.action_size, device = self.device)
+        return a.clamp(self.min_action_torch, self.max_action_torch).cpu().numpy()
 
     def _update(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,
                 done: torch.Tensor) -> Dict[str, int | float | bool | Any]:
@@ -364,7 +394,7 @@ class TDMPC2Agent(Agent, nn.Module):
             _latent_state = self.dynamics_net(_latent_state, _action)
             prediction_rollout.append(_latent_state)
             # We calc. the discounted consistency loss.
-            consistency_loss += _discount * F.mse_loss(_latent_state, _next_latent_state)
+            consistency_loss += _discount * self.consistency_criterion(_latent_state, _next_latent_state)
             _discount *= self.discount
         prediction_rollout = torch.stack(prediction_rollout, dim = 1)
         # prediction_rollout = self._rollout(latent_state[:, 0], action)
@@ -382,9 +412,9 @@ class TDMPC2Agent(Agent, nn.Module):
         for t, (rew_pred_unbind, rew_unbind, td_targets_unbind, q1_unbind, q2_unbind) in enumerate(
                 zip(reward_prediction.unbind(1), reward.unbind(1), td_target.unbind(1), q1_prediction.unbind(1),
                     q2_prediction.unbind(1))):
-            reward_loss += _discount * F.mse_loss(rew_pred_unbind, rew_unbind)
-            q_loss += _discount * (F.mse_loss(q1_unbind, td_targets_unbind)) + (
-                F.mse_loss(q2_unbind, td_targets_unbind))
+            reward_loss += _discount * self.reward_criterion(rew_pred_unbind, rew_unbind)
+            q_loss += _discount * (self.q_criterion(q1_unbind, td_targets_unbind)) + (
+                self.q_criterion(q2_unbind, td_targets_unbind))
             _discount *= self.discount
 
         # Step 08: Normalize the losses
@@ -486,8 +516,8 @@ class TDMPC2Agent(Agent, nn.Module):
 
         # Step 01: Let's first predict the state and the discounted reward in the num of `horizon` in the future.
         _G, _discount = 0, 1
-        latent_state = latent_state.unsqueeze(0).repeat(action_sequence.shape[0], 1)  # expand the latent space
-        for action in action_sequence.unbind(1):
+        # latent_state = latent_state.unsqueeze(0).repeat(action_sequence.shape[0], 1)  # expand the latent space
+        for action in action_sequence.unbind(0):
             reward = self.reward_net(latent_state, action)
             latent_state = self.dynamics_net(latent_state, action)
             _G += _discount * reward

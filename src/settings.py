@@ -37,7 +37,7 @@ SETTINGS = {
         # General settings
         "SEED": 24,  # The seed that we want to use
         "DEVICE": torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # On which machine is it running?
-        "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
+        "USE_TF32": True,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
 
         # Environment settings
         "USE_ENV": PENDULUM,  # The used environment
@@ -73,7 +73,7 @@ SETTINGS = {
         "USE_COMPILE": False,  # if torch.compile should be used for the networks
         "OPT_ITER": 32,  # How many iterations should be done of gradient descent when calling agent.optimize()?
         "BATCH_SIZE": 256,  # The batch size for doing gradient descent
-        "DISCOUNT": 0.95,  # The discount factor for the TD error
+        "DISCOUNT": 0.99,  # The discount factor for the TD error
 
         # TARGET NET STRATEGY
         "USE_TARGET_NET": True,  # If a target net is used
@@ -238,7 +238,7 @@ SETTINGS = {
         },
         "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
         "NOISE": _DEFAULT_NOISE,
-        "HORIZON": 6,  # How many steps do we want to consider while doing predictions
+        "HORIZON": 3,  # How many steps do we want to consider while doing predictions
         "MMPI_ITERATIONS": 6,
         "NUM_TRAJECTORIES": 8,
         "NUM_SAMPLES": 256,

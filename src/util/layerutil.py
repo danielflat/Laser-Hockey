@@ -4,17 +4,14 @@ import torch.nn.functional as F
 
 
 class SimNorm(nn.Module):
-    def __init__(self, temperature):
+    def __init__(self):
         super().__init__()
-        self.temperature = temperature
 
-    def forward(self, x: torch.Tensor, V = 8):
-        # shape = x.shape
-        # x = x.view(*shape[:-1], -1, V)
-        # x = F.softmax(x / self.temperature, dim = -1)
-        # return x.view(*shape)
-        x = F.softmax(x / self.temperature, dim = -1)
-        return x
+    def forward(self, x: torch.Tensor, simnorm_dim = 8):
+        shape = x.shape
+        x = x.view(*shape[:-1], -1, simnorm_dim)
+        x = F.softmax(x, dim = -1)
+        return x.view(*shape)
 
 
 class NormedLinear(nn.Module):
@@ -26,7 +23,7 @@ class NormedLinear(nn.Module):
     """
 
     def __init__(self, in_features: int, out_features: int, activation_function: str, bias: bool = False,
-                 dropout: float = 0.0, temperature: float = 1):
+                 dropout: float = 0.0):
         super().__init__()
         self.linear = nn.Linear(in_features, out_features, bias = bias)
         self.dropout = nn.Dropout(dropout, inplace = False) if dropout else None
@@ -35,7 +32,7 @@ class NormedLinear(nn.Module):
         if activation_function == "Mish":
             self.activation_function = nn.Mish(inplace = False)
         elif activation_function == "SimNorm":
-            self.activation_function = SimNorm(temperature = temperature)
+            self.activation_function = SimNorm()
         else:
             raise NotImplementedError(f"Activation function {activation_function} not implemented.")
 
