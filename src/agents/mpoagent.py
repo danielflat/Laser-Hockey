@@ -185,7 +185,7 @@ class Critic(nn.Module):
         assert not self.continuous
         
         all_q_values = self.forward(state, action) # (B, da)
-        q_value = all_q_values.gather(dim=1, index=action.long()) # (B, 1)
+        q_value = all_q_values.gather(dim=1, index=action.long().unsqueeze(1)) # (B, 1)
         
         return q_value
     
@@ -224,7 +224,7 @@ class MPOAgent(Agent):
         
         #Continous or discrete action space
         self.continuous = True
-        if mpo_settings.get("DISCRETE", False):
+        if agent_settings.get("NUMBER_DISCRETE_ACTIONS") is not None and agent_settings.get("NUMBER_DISCRETE_ACTIONS") > 0:
             self.continuous = False
 
         self.device = device
@@ -245,12 +245,12 @@ class MPOAgent(Agent):
         self.ε_dual = mpo_settings.get("DUAL_CONSTAINT", 0.1) 
         self.ε_kl = mpo_settings.get("KL_CONSTRAINT", 0.1) 
         self.ε_kl_μ = mpo_settings.get("KL_CONSTRAINT_MEAN", 0.01) 
-        self.ε_kl_Σ = mpo_settings.get("KL_CONSTRAINT_VAR", 0.001) 
+        self.ε_kl_Σ = mpo_settings.get("KL_CONSTRAINT_VAR", 0.0001) 
         
         # Clipping values for lagrangian multipliers
         self.α_max = mpo_settings.get("ALPHA_MAX", 1.0)
-        self.α_μ_max = mpo_settings.get("ALPHA_MAX_MU", 0.1)
-        self.α_Σ_max = mpo_settings.get("ALPHA_MAX_VAR", 10.0)
+        self.α_μ_max = mpo_settings.get("ALPHA_MAX_MU", 1.0)
+        self.α_Σ_max = mpo_settings.get("ALPHA_MAX_VAR", 1.0)
         
         #initialize variables to optimize
         self.η = np.random.rand() #E step, dual variable
@@ -421,26 +421,20 @@ class MPOAgent(Agent):
         Σi = Ai @ bt(Ai)  # (B, n, n)
         Σ = A @ bt(A)  # (B, n, n)
         
-        # Add a small value to the diagonal for numerical stability
-        Σi = Σi + torch.eye(n).to(Σi.device) * 1e-6
-        Σ = Σ + torch.eye(n).to(Σ.device) * 1e-6
-        
         # determinant can be minus due to numerical calculation error
         # https://github.com/daisatojp/mpo/issues/11. 
         # Trying to fix inf values via logdet
-        Σi_det = torch.logdet(Σi).exp()
-        Σ_det = torch.logdet(Σ).exp()
-        Σi_det = torch.clamp_min(Σi_det, 1e-6)
-        Σ_det = torch.clamp_min(Σ_det, 1e-6)
-        # Σi_det = Σi.det()  # (B,)
-        # Σ_det = Σ.det()  # (B,)
+        Σi_logdet = Σi.logdet()  # (B,)
+        Σ_logdet = Σ.logdet()  # (B,)
+        #Σi_det = torch.clamp_min(Σi_det, 1e-4)
+        #Σ_det = torch.clamp_min(Σ_det, 1e-4)
         
         #Inverse of the covariance matrices
         Σi_inv = Σi.inverse()  # (B, n, n)
         Σ_inv = Σ.inverse()  # (B, n, n)
-    
+        
         inner_μ = ((μ - μi).transpose(-2, -1) @ Σi_inv @ (μ - μi)).squeeze()  # (B,)
-        inner_Σ = torch.log(Σ_det / Σi_det) - n + btr(Σ_inv @ Σi) # (B,)
+        inner_Σ = Σ_logdet - Σi_logdet - n + btr(Σ_inv @ Σi) # (B,)
         
         #Mean and covariance terms of the KL divergence
         C_μ = 0.5 * torch.mean(inner_μ)
@@ -588,8 +582,8 @@ class MPOAgent(Agent):
                     #η_μ_kl_np = self.η_μ_kl.detach().item()
                     #η_Σ_kl_np = self.η_Σ_kl.detach().item()
                     
-                    self.η_μ_kl -= 1 * (self.ε_kl_μ - kl_μ).detach().item()
-                    self.η_Σ_kl -= 100 * (self.ε_kl_Σ - kl_Σ).detach().item()
+                    self.η_μ_kl -= 0.01 * (self.ε_kl_μ - kl_μ).detach().item()
+                    self.η_Σ_kl -= 0.01 * (self.ε_kl_Σ - kl_Σ).detach().item()
                     
                     self.η_μ_kl = np.clip(self.η_μ_kl, 0.0, self.α_μ_max)
                     self.η_Σ_kl = np.clip(self.η_Σ_kl, 0.0, self.α_Σ_max)
@@ -663,6 +657,7 @@ class MPOAgent(Agent):
             "Critic Loss": np.mean([l[0] for l in losses]),
             "Langragian_µ": self.η_μ_kl,
             "Langragian_Σ": self.η_Σ_kl,
+            
             "Dual Variable": self.η,
         }
         return sum_up_stats

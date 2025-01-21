@@ -213,10 +213,10 @@ class TD3Agent(Agent):
         if self.cross_q:
             # 1. Next action via the Actor network
             next_action = self.Actor.forward(next_state) * self.action_scale + self.action_bias
-            next_action = torch.clamp(
-                next_action + noise,
-                min = self.action_low,  # Minimum action value
-                max = self.action_high).float()  # Maximum action value
+            #next_action = torch.clamp(
+            #    next_action + noise,
+            #    min = self.action_low,  # Minimum action value
+            #    max = self.action_high).float()  # Maximum action value
             
             # Concat both states and actions for joint forward pass
             cat_states = torch.cat([state, next_state], 0) # (batch_size x 2, state_size)
@@ -245,10 +245,10 @@ class TD3Agent(Agent):
         else:
             # 1. Next action via the target Actor network
             next_action = self.Actor_target(next_state) * self.action_scale + self.action_bias
-            next_action = torch.clamp(
-                next_action + noise,
-                min = self.action_low,          # Minimum action value
-                max = self.action_high).float()  # Maximum action value
+            #next_action = torch.clamp(
+            #    next_action + noise,
+            #    min = self.action_low,          # Minimum action value
+            #    max = self.action_high).float()  # Maximum action value
             
             # 2. Forward pass for both Q networks
             q_prime1 = self.Critic1_target(next_state, next_action)
@@ -277,7 +277,7 @@ class TD3Agent(Agent):
             state, action, reward, next_state, done, info = memory.sample(self.batch_size, randomly=True)
             
             # Train the curiosity module 
-            self.icm.train(state, next_state, action)
+            # self.icm.train(state, next_state, action)
             
             #Forward pass for Q networks
             if self.USE_BF_16:
@@ -315,13 +315,18 @@ class TD3Agent(Agent):
                 self.optimizer_actor.step()
 
             #Logging the losses, here only the critic loss
-            losses.append(Critic_loss.item())
+            losses.append([Critic_loss.item(), policy_loss.item()])
 
         #after each optimization, update actor and critic target networks
         if episode_i % self.target_net_update_freq == 0 and self.use_target_net:
             self._copy_nets()
         
-        return losses
+        sum_up_stats = {
+            "Critic_Loss": sum([l[0] for l in losses]) / len(losses),
+            "Policy_Loss": sum([l[1] for l in losses]) / len(losses)
+        }
+        
+        return sum_up_stats
 
     def setMode(self, eval=False) -> None:
         """
