@@ -166,7 +166,7 @@ class TDMPC2Agent(Agent, nn.Module):
         self.entropy_coef = td_mpc2_settings["ENTROPY_COEF"]
         # self.rho = 0.5 the _discount parameter in the paper. I don't know why they used 0.5
         self.enc_lr_scale = td_mpc2_settings["ENC_LR_SCALE"]
-        self.lr = td_mpc2_settings["LR"]
+        self.lr = td_mpc2_settings["OPTIMIZER"]["LEARNING_RATE"]
         self.consistency_coef = td_mpc2_settings["CONSISTENCY_COEF"]
         self.reward_coef = td_mpc2_settings["REWARD_COEF"]
         self.q_coef = td_mpc2_settings["Q_COEF"]
@@ -198,9 +198,9 @@ class TDMPC2Agent(Agent, nn.Module):
         self.policy_optim = self.initOptim(optim = td_mpc2_settings["OPTIMIZER"],
                                            parameters = self.policy_net.parameters())
 
-        self.consistency_criterion = torch.nn.MSELoss()
-        self.reward_criterion = torch.nn.CrossEntropyLoss()
-        self.q_criterion = torch.nn.CrossEntropyLoss()
+        self.consistency_criterion = self.initLossFunction(loss_name = td_mpc2_settings["CONSISTENCY_LOSS_FUNCTION"])
+        self.reward_criterion = self.initLossFunction(loss_name = td_mpc2_settings["REWARD_LOSS_FUNCTION"])
+        self.q_criterion = self.initLossFunction(loss_name = td_mpc2_settings["Q_LOSS_FUNCTION"])
 
 
         if self.USE_COMPILE:
