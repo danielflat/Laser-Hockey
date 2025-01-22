@@ -30,23 +30,22 @@ _DEFAULT_NOISE = {
         "DT": 1e-2,
     }
 }
-# Convenient Constants
+
 SETTINGS = {
     # The settings for the main.py
     "MAIN": {
         # General settings
         "SEED": 24,  # The seed that we want to use
         "DEVICE": torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # On which machine is it running?
-        "USE_TF32": True,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
+        "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
 
         # Environment settings
-        "USE_ENV": PENDULUM,  # The used environment
-        "PROXY_REWARDS": True,  # If the agent should get proxy rewards (works only with HOCKEY)
+        "USE_ENV": HOCKEY,  # The used environment
+        "PROXY_REWARDS": False,  # If the agent should get proxy rewards (works only with HOCKEY)
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
-        "SELF_PLAY": False,  # If the agent should play against itself like in AlphaGo
-        "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
+        "USE_ALGO": DDPG_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
 
         # Defining training loop
         "BUFFER_SIZE": 1_000,  # How many items can be stored in the replay buffer?
@@ -54,17 +53,29 @@ SETTINGS = {
         "NUM_TEST_EPISODES": 1_000,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
-        "SHOW_PLOTS": False,  # If you want to plot statistics after each episode
         "CURIOSITY": None,
         # Proportion of curiosity reward calculated by ICM to be added to the real reward. If None no curiosity exploration is used
+
+        # PLOTTING
+        "SHOW_PLOTS": False,  # If you want to plot statistics after each episode
+        "PLOT_FREQUENCY": 100,  # After how many episodes you want to refresh the plots
+        "BATTLE_STATISTICS_FREQUENCY": 100,
+        # After how many episodes you want to log the battle statistics on the console
 
         # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
         # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
         "CHECKPOINT_NAME": None,
-        "CHECKPOINT_ITER": 20,  # saves a checkpoint of this model after x iterations
+        "CHECKPOINT_ITER": 500,  # saves a checkpoint of this model after x iterations
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
 
+        # SELF-Play Settings
+        "SELF_PLAY": True,  # If the agent should play against itself like in AlphaGo
+        "SELF_PLAY_FREQUENCY": 10,
+        # Frequency of self-play episodes. Play 1/#Number against an agent from the other pool. Play #Number-1/#Number against a version of itself
+        "SELF_PLAY_KEEP_AGENT": True,
+        # If you should keep the old version of the agent in the opponent pool, after training
+        "SELF_PLAY_UPDATE_FREQUENCY": 500  # After how many iterations do you want to hard-update the self_opponent?
     },
     # The settings for the agent.py
     "AGENT": {
@@ -228,7 +239,7 @@ SETTINGS = {
     },
     "TD_MPC2": {
         "OPTIMIZER": {
-            "OPTIM_NAME": ADAM,  # Which optimizer to use #TODO: TRY IT WITH ADAMW instead
+            "OPTIM_NAME": ADAMW,  # Which optimizer to use
             "LEARNING_RATE": 3e-4,  # The learning rate for the agent
             "BETAS": (0.9, 0.999),  # The beta1, beta2 parameters of Adam
             "EPS": 1e-8,  # eps Adam param
@@ -236,29 +247,33 @@ SETTINGS = {
             "USE_FUSION": torch.cuda.is_available()
             # if we have CUDA, we can use the fusion implementation of Adam -> Faster
         },
-        "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
-        "NOISE": _DEFAULT_NOISE,
+        "CONSISTENCY_LOSS_FUNCTION": MSE_LOSS,  # Which Loss function to use for the consistency loss
+        "REWARD_LOSS_FUNCTION": MSE_LOSS,  # Which Loss function to use for the reward loss
+        "Q_LOSS_FUNCTION": MSE_LOSS,  # Which Loss function to use for the q loss
+        "CONSISTENCY_COEF": 20,  # factor for the consistency loss
+        "REWARD_COEF": 0.1,  # factor for the reward loss
+        "Q_COEF": 0.1,  # factor for the Q loss
+        "ENTROPY_COEF": 1e-4,
+        "ENC_LR_SCALE": 0.3,
+
+        "NOISE": _DEFAULT_NOISE,  # Which noise should we add
         "HORIZON": 3,  # How many steps do we want to consider while doing predictions
-        "MMPI_ITERATIONS": 6,
-        "NUM_TRAJECTORIES": 8,
-        "NUM_SAMPLES": 256,
-        "NUM_ELITES": 64,
+
+        "MMPI_ITERATIONS": 3,  # How many iterations of MPPI should we use for planning
+        "NUM_TRAJECTORIES": 4,
+        "NUM_SAMPLES": 32,
+        "NUM_ELITES": 8,
         "MIN_STD": 0.05,
         "MAX_STD": 2,
         "TEMPERATURE": 0.5,
-        "LATENT_SIZE": 512,
+        "LATENT_SIZE": 256,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
-        "ENTROPY_COEF": 1e-4,
-        "ENC_LR_SCALE": 0.3,
-        "GRAD_CLIP_NORM": 20,
-        "LR": 3e-4,
-        "CONSISTENCY_COEF": 20,
-        "REWARD_COEF": 0.1,
-        "Q_COEF": 0.1,
         "CHECKPOINT_NAME": None,  # which checkpoint should be used for the TD-MPC-2 Hockey agent?
     }
 }
+
+# Convenient Constants
 MAIN_SETTINGS = SETTINGS["MAIN"]
 AGENT_SETTINGS = SETTINGS["AGENT"]
 DQN_SETTINGS = SETTINGS["DQN"]
@@ -268,3 +283,36 @@ TD3_SETTINGS = SETTINGS["TD3"]
 SAC_SETTINGS = SETTINGS["SAC"]
 MPO_SETTINGS = SETTINGS["MPO"]
 TD_MPC2_SETTINGS = SETTINGS["TD_MPC2"]
+
+SEED = MAIN_SETTINGS["SEED"]
+DEVICE = MAIN_SETTINGS["DEVICE"]
+USE_TF32 = MAIN_SETTINGS["USE_TF32"]
+USE_ENV = MAIN_SETTINGS["USE_ENV"]
+PROXY_REWARDS = MAIN_SETTINGS["PROXY_REWARDS"]
+RENDER_MODE = MAIN_SETTINGS["RENDER_MODE"]
+NUMBER_DISCRETE_ACTIONS = MAIN_SETTINGS["NUMBER_DISCRETE_ACTIONS"]
+USE_ALGO = MAIN_SETTINGS["USE_ALGO"]
+SELF_PLAY = MAIN_SETTINGS["SELF_PLAY"]
+MODEL_NAME = MAIN_SETTINGS["MODEL_NAME"]
+BUFFER_SIZE = MAIN_SETTINGS["BUFFER_SIZE"]
+NUM_TRAINING_EPISODES = MAIN_SETTINGS["NUM_TRAINING_EPISODES"]
+NUM_TEST_EPISODES = MAIN_SETTINGS["NUM_TEST_EPISODES"]
+EPISODE_UPDATE_ITER = MAIN_SETTINGS["EPISODE_UPDATE_ITER"]
+SHOW_PLOTS = MAIN_SETTINGS["SHOW_PLOTS"]
+CHECKPOINT_ITER = MAIN_SETTINGS["CHECKPOINT_ITER"]
+CHECKPOINT_NAME = MAIN_SETTINGS["CHECKPOINT_NAME"]
+CURIOSITY = MAIN_SETTINGS["CURIOSITY"]
+SELF_PLAY_FREQUENCY = MAIN_SETTINGS["SELF_PLAY_FREQUENCY"]
+SELF_PLAY_KEEP_AGENT = MAIN_SETTINGS["SELF_PLAY_KEEP_AGENT"]
+PLOT_FREQUENCY = MAIN_SETTINGS["PLOT_FREQUENCY"]
+BATTLE_STATISTICS_FREQUENCY = MAIN_SETTINGS["BATTLE_STATISTICS_FREQUENCY"]
+SELF_PLAY_UPDATE_FREQUENCY = MAIN_SETTINGS["SELF_PLAY_UPDATE_FREQUENCY"]
+
+BATCH_SIZE = AGENT_SETTINGS["BATCH_SIZE"]
+
+# SAC Params
+SAC_NUM_EPOCHS = SAC_SETTINGS["NUM_EPOCHS"]
+SAC_NUM_EPISODES_PER_TRAINING_EPOCH = SAC_SETTINGS["NUM_EPISODES_PER_TRAINING_EPOCH"]
+SAC_NUM_EPISODES_PER_VALIDATION_EPOCH = SAC_SETTINGS["NUM_EPISODES_PER_VALIDATION_EPOCH"]
+SAC_VALIDATION_FREQ = SAC_SETTINGS["VALIDATION_FREQ"]
+SAC_TRAIN_FREQ = SAC_SETTINGS["TRAIN_FREQ"]
