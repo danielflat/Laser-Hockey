@@ -396,3 +396,6 @@ class TD3Agent(Agent):
             "Critic2": self.Critic2.state_dict(),
         }
         return checkpoint
+
+    def reset(self):
+        raise NotImplementedError

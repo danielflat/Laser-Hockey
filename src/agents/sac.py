@@ -312,3 +312,6 @@ class SoftActorCritic(Agent):
             "log_alpha": self.log_alpha.detach().cpu().numpy(),
         }
         return checkpoint
+
+    def reset(self):
+        raise NotImplementedError

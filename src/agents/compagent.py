@@ -42,3 +42,6 @@ class CompAgent(Agent):
 
     def export_checkpoint(self) -> dict:
         raise NotImplementedError
+
+    def reset(self):
+        pass

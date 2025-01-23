@@ -43,7 +43,7 @@ class Agent(ABC):
         self.USE_COMPILE = agent_settings["USE_COMPILE"]
 
     @abstractmethod
-    def act(self, x: torch.Tensor) -> int:
+    def act(self, x: torch.Tensor) -> np.array:
         pass
 
     @abstractmethod
@@ -93,6 +93,10 @@ class Agent(ABC):
 
     @abstractmethod
     def export_checkpoint(self) -> dict:
+        pass
+
+    @abstractmethod
+    def reset(self):
         pass
 
     def adjust_epsilon(self, episode_i: int) -> None:

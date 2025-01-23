@@ -10,6 +10,7 @@ from torch.nn import functional as F
 from typing import Any, Dict
 
 from src.agent import Agent
+from comprl.client import Agent as Lecture_Agent
 from src.replaymemory import ReplayMemory
 from src.util import mathutil
 from src.util.layerutil import NormedLinear
@@ -550,3 +551,6 @@ class TDMPC2Agent(Agent, nn.Module):
         target_q = self._min_q_value(next_latent_state, next_action, use_target)
         td_target = reward + self.discount * (1 - done) * target_q
         return td_target
+
+    def reset(self):
+        raise NotImplementedError

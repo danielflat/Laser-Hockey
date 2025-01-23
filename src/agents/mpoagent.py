@@ -730,3 +730,6 @@ class MPOAgent(Agent):
             "lagrangian_Σ": self.η_Σ_kl,
         }
         return checkpoint
+
+    def reset(self):
+        raise NotImplementedError

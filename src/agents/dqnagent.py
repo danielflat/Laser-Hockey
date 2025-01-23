@@ -219,3 +219,6 @@ class DQNAgent(Agent):
 
     def export_checkpoint(self) -> dict:
         raise NotImplementedError
+
+    def reset(self):
+        raise NotImplementedError

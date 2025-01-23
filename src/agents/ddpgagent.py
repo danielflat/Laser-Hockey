@@ -322,6 +322,8 @@ class DDPGAgent(Agent):
         }
         return checkpoint
 
+    def reset(self):
+        pass
 
 
     def _copyNets(self):
