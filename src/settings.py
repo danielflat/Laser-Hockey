@@ -73,8 +73,8 @@ SETTINGS = {
         "SELF_PLAY": True,  # If the agent should play against itself like in AlphaGo
         "SELF_PLAY_FREQUENCY": 10,
         # Frequency of self-play episodes. Play 1/#Number against an agent from the other pool. Play #Number-1/#Number against a version of itself
-        "SELF_PLAY_KEEP_AGENT": True,
-        # If you should keep the old version of the agent in the opponent pool, after training
+        "SELF_PLAY_KEEP_AGENT_FREQUENCY": 5000,
+        # Put a checkpoint of your agent after x iterations into your opponent pool?
         "SELF_PLAY_UPDATE_FREQUENCY": 500  # After how many iterations do you want to hard-update the self_opponent?
     },
     # The settings for the agent.py
@@ -303,7 +303,7 @@ CHECKPOINT_ITER = MAIN_SETTINGS["CHECKPOINT_ITER"]
 CHECKPOINT_NAME = MAIN_SETTINGS["CHECKPOINT_NAME"]
 CURIOSITY = MAIN_SETTINGS["CURIOSITY"]
 SELF_PLAY_FREQUENCY = MAIN_SETTINGS["SELF_PLAY_FREQUENCY"]
-SELF_PLAY_KEEP_AGENT = MAIN_SETTINGS["SELF_PLAY_KEEP_AGENT"]
+SELF_PLAY_KEEP_AGENT_FREQUENCY = MAIN_SETTINGS["SELF_PLAY_KEEP_AGENT_FREQUENCY"]
 PLOT_FREQUENCY = MAIN_SETTINGS["PLOT_FREQUENCY"]
 BATTLE_STATISTICS_FREQUENCY = MAIN_SETTINGS["BATTLE_STATISTICS_FREQUENCY"]
 SELF_PLAY_UPDATE_FREQUENCY = MAIN_SETTINGS["SELF_PLAY_UPDATE_FREQUENCY"]

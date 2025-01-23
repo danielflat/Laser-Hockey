@@ -15,7 +15,7 @@ from src.settings import AGENT_SETTINGS, BATTLE_STATISTICS_FREQUENCY, CHECKPOINT
     MODEL_NAME, MPO_SETTINGS, \
     NUM_TRAINING_EPISODES, PLOT_FREQUENCY, PPO_SETTINGS, \
     RENDER_MODE, SAC_SETTINGS, \
-    SEED, SELF_PLAY, SELF_PLAY_FREQUENCY, SELF_PLAY_KEEP_AGENT, SELF_PLAY_UPDATE_FREQUENCY, SETTINGS, \
+    SEED, SELF_PLAY, SELF_PLAY_FREQUENCY, SELF_PLAY_KEEP_AGENT_FREQUENCY, SELF_PLAY_UPDATE_FREQUENCY, SETTINGS, \
     SHOW_PLOTS, TD3_SETTINGS, TD_MPC2_SETTINGS, USE_ALGO
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
     TD3_ALGO, TDMPC2_ALGO, WEAK_COMP_ALGO, MPO_ALGO
@@ -192,6 +192,11 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
 
         # For reproducibility of the training, we use predefined seeds
         state, info = env.reset(seed = SEED + i_training - 1)
+
+        # we reset the agents for the new episode
+        agent.reset()
+        opponent.reset()
+
         state_opponent = env.obs_agent_two()
         # Convert state to torch
         state = torch.tensor(state, device = DEVICE, dtype = torch.float32)
@@ -311,7 +316,7 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
         # (Optional): If self play is activated, we want to update the opponent pool ...
         if SELF_PLAY and i_training % SELF_PLAY_UPDATE_FREQUENCY == 0:
             # if we decide to keep the old agent in our pool, we save the statistics and create a new statistics object
-            if SELF_PLAY_KEEP_AGENT:
+            if i_training % SELF_PLAY_KEEP_AGENT_FREQUENCY == 0:
                 opponent_pool[f"{USE_ALGO}_{i_training}"] = copy.deepcopy(self_opponent)
                 opponent_statistics[f"{USE_ALGO}_{i_training}"] = copy.deepcopy(self_statistics)
                 self_statistics = {
