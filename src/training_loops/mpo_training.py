@@ -159,7 +159,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             assert PLOT_FREQUENCY >= CHECKPOINT_ITER, "Plotting freq should be larger than checkpointing freq!"
             assert PLOT_FREQUENCY >= EPISODE_UPDATE_ITER, "Plotting freq should be larger than update freq!"
             
-            plot_mpo_training_metrics(all_steps, all_rewards, all_critic_losses, all_actor_losses, all_kl_µ, all_kl_Σ, val_opponent_metrics)
+            plot_mpo_training_metrics(all_critic_losses, all_actor_losses, all_kl_µ, all_kl_Σ, val_opponent_metrics)
 
     logging.info("Finished MPO training!")
     
