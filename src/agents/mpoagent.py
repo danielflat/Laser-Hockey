@@ -516,7 +516,7 @@ class MPOAgent(Agent):
         K = self.batch_size  
         for _ in range(self.opt_iter):
             # Sample from replay buffer, dimensions (K, ds), (K, da), (K,), (K, ds) 
-            states, actions, rewards, next_states, dones, _ = memory.sample(batch_size=self.batch_size, randomly=True)
+            states, actions, rewards, next_states, dones, info = memory.sample(batch_size=self.batch_size, randomly=True)
             # Train the curiosity module 
             # self.icm.train(states, next_states, actions)
             
@@ -584,7 +584,7 @@ class MPOAgent(Agent):
                     
                     self.η_μ_kl -= 0.01 * (self.ε_kl_μ - kl_μ).detach().item()
                     self.η_Σ_kl -= 0.01 * (self.ε_kl_Σ - kl_Σ).detach().item()
-                    
+                
                     self.η_μ_kl = np.clip(self.η_μ_kl, 0.0, self.α_μ_max)
                     self.η_Σ_kl = np.clip(self.η_Σ_kl, 0.0, self.α_Σ_max)
                     
@@ -643,7 +643,7 @@ class MPOAgent(Agent):
                 self.actor_optimizer.step()
             
             #Keep track of the losses
-            losses.append([loss_critic.item(), loss_actor.item()])
+            losses.append([loss_critic.item(), loss_actor.item(), self.η_μ_kl, self.η_Σ_kl])
             
         #Update the epsilon value
         self.adjust_epsilon(episode_i)
@@ -652,15 +652,9 @@ class MPOAgent(Agent):
         if episode_i % self.target_net_update_freq == 0:
             self._copy_nets()
 
-        sum_up_stats = {
-            "Policy Loss": np.mean([l[1] for l in losses]),
-            "Critic Loss": np.mean([l[0] for l in losses]),
-            "Langragian_µ": self.η_μ_kl,
-            "Langragian_Σ": self.η_Σ_kl,
-            
-            "Dual Variable": self.η,
-        }
-        return sum_up_stats
+        avg_losses = np.mean(losses, axis=0).tolist()
+        
+        return avg_losses
     
     def setMode(self, eval: bool = False) -> None:
         """
@@ -717,8 +711,8 @@ class MPOAgent(Agent):
         self.critic.load_state_dict(checkpoint["critic"])
         self.target_actor.load_state_dict(checkpoint["target_actor"])
         self.target_critic.load_state_dict(checkpoint["target_critic"])
-        self.η_μ_kl = checkpoint["lagrangian_µ"]
-        self.η_Σ_kl = checkpoint["lagrangian_Σ"]
+        #self.η_μ_kl = checkpoint["lagrangian_µ"]
+        #self.η_Σ_kl = checkpoint["lagrangian_Σ"]
 
     def export_checkpoint(self) -> dict:
         checkpoint = {
@@ -726,7 +720,7 @@ class MPOAgent(Agent):
             "critic": self.critic.state_dict(),
             "target_actor": self.target_actor.state_dict(),
             "target_critic": self.target_critic.state_dict(),
-            "lagrangian_µ": self.η_μ_kl,
-            "lagrangian_Σ": self.η_Σ_kl,
+            #"lagrangian_µ": self.η_μ_kl,
+            #"lagrangian_Σ": self.η_Σ_kl,
         }
         return checkpoint

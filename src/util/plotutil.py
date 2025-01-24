@@ -166,3 +166,88 @@ def plot_sac_validation_metrics(
     
     if save:
         plt.savefig("sac_validation_metrics.png")
+        
+def plot_mpo_training_metrics(
+    episode_durations: List[int],
+    episode_rewards: List[float],
+    critic_losses: List[float],
+    actor_losses: List[float],
+    kl_µ: List[float],
+    kl_Σ: List[float],
+    opponent_metrics: List[dict]
+):
+    
+    # Step 01: Clear the current figure
+    plt.clf()
+
+    # Step 02: Plot nr of steps for each episode
+    plt.subplot(3, 2, 1)
+    plt.plot(np.arange(1, len(episode_durations) + 1), episode_durations, marker='o', label='Duration')
+    plt.title("Duration per Episode")
+    plt.xlabel("Episode")
+    plt.ylabel("Duration")
+    plt.legend(prop={'size': 5})
+    plt.grid()
+
+    # Step 03: Plot rewards for each episode
+    plt.subplot(3, 2, 2)
+    plt.plot(np.arange(1, len(episode_rewards) + 1), episode_rewards, marker='o', label='Reward')
+    plt.title("Rewards per Episode")
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.legend(prop={'size': 5})
+    plt.grid()
+
+    # Step 04: Plot critic loss
+    plt.subplot(3, 2, 3)
+    plt.plot(np.arange(1, len(critic_losses) + 1), critic_losses, marker='o', label='Critic Loss', color='orange')
+    plt.title("Critic Loss per Update")
+    plt.xlabel("Update")
+    plt.ylabel("Critic Loss")
+    plt.legend(prop={'size': 5})
+    plt.grid()
+
+    # Step 05: Plot actor loss
+    plt.subplot(3, 2, 4)
+    plt.plot(np.arange(1, len(actor_losses) + 1), actor_losses, marker='o', label='Actor Loss', color='green')
+    plt.title("Actor Loss per Update")
+    plt.xlabel("Update")
+    plt.ylabel("Actor Loss")
+    plt.legend(prop={'size': 5})
+    plt.grid()
+
+    # Step 06: Plot KL divergences
+    plt.subplot(3, 2, 5)
+    plt.plot(np.arange(1, len(kl_µ) + 1), kl_µ, marker='o', label='KL µ', color='purple')
+    plt.plot(np.arange(1, len(kl_Σ) + 1), kl_Σ, marker='o', label='KL Σ', color='red')
+    plt.title("KL Divergence per Update")
+    plt.xlabel("Update")
+    plt.ylabel("KL Value")
+    plt.legend(prop={'size': 5})
+    plt.grid()
+
+    # Step 07: Plot opponent metrics
+    plt.subplot(3, 2, 6)
+    opponent_names = list(opponent_metrics[0].keys())
+    for opp in opponent_names:
+        win_rate_values = [
+            iteration.get(opp, {}).get("win_rate", 0)  # Extract win_rate, default to 0 if missing
+            for iteration in opponent_metrics
+        ]
+        plt.plot(
+            np.arange(1, len(win_rate_values) + 1),
+            win_rate_values,
+            marker="o",
+            label=f"{opp}",
+        )
+        
+    plt.title("Win Rate per Validation")
+    plt.xlabel("Validation")
+    plt.ylabel("Win Rate")
+    plt.legend(prop={'size': 5})
+    plt.grid()
+    
+    plt.tight_layout()
+
+    # Step 09: Pause to refresh the plot
+    plt.pause(1)

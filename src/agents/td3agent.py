@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import List
-
+import numpy as np
 import torch
 from torch import device, nn
 
@@ -212,7 +212,7 @@ class TD3Agent(Agent):
         
         if self.cross_q:
             # 1. Next action via the Actor network
-            next_action = self.Actor.forward(next_state) * self.action_scale + self.action_bias
+            next_action = self.Actor(next_state) * self.action_scale + self.action_bias
             #next_action = torch.clamp(
             #    next_action + noise,
             #    min = self.action_low,  # Minimum action value
@@ -325,8 +325,8 @@ class TD3Agent(Agent):
             "Critic_Loss": sum([l[0] for l in losses]) / len(losses),
             "Policy_Loss": sum([l[1] for l in losses]) / len(losses)
         }
-        
-        return sum_up_stats
+        avg_losses = np.mean(losses, axis=0).tolist()
+        return avg_losses
 
     def setMode(self, eval=False) -> None:
         """
