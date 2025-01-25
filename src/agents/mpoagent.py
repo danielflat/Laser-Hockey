@@ -254,12 +254,12 @@ class MPOAgent(Agent):
         
         #initialize variables to optimize
         self.η = np.random.rand() #E step, dual variable
-        #self.η_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True, device = self.device) #discrete M step
-        #self.η_µ_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True, device = self.device) #continuous M step
-        #self.η_Σ_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True, device = self.device) #continuous M step
-        self.η_kl = 0.0
-        self.η_μ_kl = 0.0
-        self.η_Σ_kl = 0.0
+        self.η_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True, device = self.device) #discrete M step
+        self.η_µ_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True, device = self.device) #continuous M step
+        self.η_Σ_kl = torch.tensor(0.0, dtype=torch.float32, requires_grad=True, device = self.device) #continuous M step
+        #self.η_kl = 0.0
+        #self.η_μ_kl = 0.0
+        #self.η_Σ_kl = 0.0
 
         #Set up the actor and critic networks
         self.actor = Actor(state_space, action_space, self.hidden_dim, self.continuous).to(self.device)
@@ -274,6 +274,10 @@ class MPOAgent(Agent):
                                            parameters = self.actor.parameters())
         self.critic_optimizer = self.initOptim(optim = mpo_settings["CRITIC"]["OPTIMIZER"],
                                            parameters = self.critic.parameters())
+        self.lagrangian_optimizer_cont = self.initOptim(optim = mpo_settings["LAGRANGIANS"]["OPTIMIZER"],
+                                             parameters = [self.η_μ_kl, self.η_Σ_kl])
+        self.lagrangian_optimizer_disc = self.initOptim(optim = mpo_settings["LAGRANGIANS"]["OPTIMIZER"],
+                                             parameters = [self.η_kl])
 
         #Define Loss function
         self.criterion = self.initLossFunction(loss_name = mpo_settings["CRITIC"]["LOSS_FUNCTION"])
@@ -571,22 +575,22 @@ class MPOAgent(Agent):
                     
                     # Update lagrangian multipliers α by gradient descent
                     
-                    #lagrangian_loss = self.η_μ_kl * (self.ε_kl_μ - kl_μ) + self.η_Σ_kl * (self.ε_kl_Σ - kl_Σ)
-                    #self.lagrangian_optimizer_cont.zero_grad()
-                    #lagrangian_loss.backward(retain_graph=True)
-                    #self.lagrangian_optimizer_cont.step()
+                    lagrangian_loss = self.η_μ_kl * (self.ε_kl_μ - kl_μ) + self.η_Σ_kl * (self.ε_kl_Σ - kl_Σ)
+                    self.lagrangian_optimizer_cont.zero_grad()
+                    lagrangian_loss.backward(retain_graph=True)
+                    self.lagrangian_optimizer_cont.step()
                     
                     #self.η_μ_kl = torch.clamp(self.η_μ_kl.detach(), 0.0, self.α_μ_max)
                     #self.η_Σ_kl = torch.clamp(self.η_Σ_kl.detach(), 0.0, self.α_Σ_max)
                     
-                    #η_μ_kl_np = self.η_μ_kl.detach().item()
-                    #η_Σ_kl_np = self.η_Σ_kl.detach().item()
+                    η_μ_kl_np = self.η_μ_kl.detach().item()
+                    η_Σ_kl_np = self.η_Σ_kl.detach().item() 
                     
-                    self.η_μ_kl -= 0.01 * (self.ε_kl_μ - kl_μ).detach().item()
-                    self.η_Σ_kl -= 0.01 * (self.ε_kl_Σ - kl_Σ).detach().item()
+                    #self.η_μ_kl -= 0.01 * (self.ε_kl_μ - kl_μ).detach().item()
+                    #self.η_Σ_kl -= 0.01 * (self.ε_kl_Σ - kl_Σ).detach().item()
                 
-                    self.η_μ_kl = np.clip(self.η_μ_kl, 0.0, self.α_μ_max)
-                    self.η_Σ_kl = np.clip(self.η_Σ_kl, 0.0, self.α_Σ_max)
+                    #self.η_μ_kl = np.clip(self.η_μ_kl, 0.0, self.α_μ_max)
+                    #self.η_Σ_kl = np.clip(self.η_Σ_kl, 0.0, self.α_Σ_max)
                     
                     
                     #First we compute the known MLE Loss without the KL constraints 
@@ -601,8 +605,8 @@ class MPOAgent(Agent):
                     # last eq of p.5
                     loss_actor = -(
                             loss_MLE
-                            + self.η_μ_kl * (self.ε_kl_μ - kl_μ)
-                            + self.η_Σ_kl * (self.ε_kl_Σ - kl_Σ)
+                            + η_μ_kl_np * (self.ε_kl_μ - kl_μ)
+                            + η_Σ_kl_np * (self.ε_kl_Σ - kl_Σ)
                     )
                 else:
                     #Creates action tensor of shape (da, K), where each of the K rows contains repeated indices ranging from 0 to self.da - 1
@@ -643,7 +647,7 @@ class MPOAgent(Agent):
                 self.actor_optimizer.step()
             
             #Keep track of the losses
-            losses.append([loss_critic.item(), loss_actor.item(), self.η_μ_kl, self.η_Σ_kl])
+            losses.append([loss_critic.item(), loss_actor.item(), η_μ_kl_np, η_Σ_kl_np])
             
         #Update the epsilon value
         self.adjust_epsilon(episode_i)

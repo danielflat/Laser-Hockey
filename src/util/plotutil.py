@@ -196,11 +196,11 @@ def plot_mpo_training_metrics(
     plt.legend(prop={'size': 5})
     plt.grid()
 
-    # Step 06: Plot KL divergences
+    # Step 06: Plot KL Lagrange Multiplier
     plt.subplot(2, 2, 3)
     plt.plot(np.arange(1, len(kl_µ) + 1), kl_µ, marker='o', label='KL µ', color='purple')
     plt.plot(np.arange(1, len(kl_Σ) + 1), kl_Σ, marker='o', label='KL Σ', color='red')
-    plt.title("KL Divergence per Update")
+    plt.title("Lagrangian Multiplier per Update")
     plt.xlabel("Update")
     plt.ylabel("KL Value")
     plt.legend(prop={'size': 5})
