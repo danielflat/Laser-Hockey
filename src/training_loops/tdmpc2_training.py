@@ -16,7 +16,7 @@ from src.settings import AGENT_SETTINGS, BATTLE_STATISTICS_FREQUENCY, CHECKPOINT
     NUM_TRAINING_EPISODES, PLOT_FREQUENCY, PPO_SETTINGS, \
     RENDER_MODE, SAC_SETTINGS, \
     SEED, SELF_PLAY, SELF_PLAY_FREQUENCY, SELF_PLAY_KEEP_AGENT_FREQUENCY, SELF_PLAY_UPDATE_FREQUENCY, SETTINGS, \
-    SHOW_PLOTS, TD3_SETTINGS, TD_MPC2_SETTINGS, USE_ALGO
+    SHOW_PLOTS, TD3_SETTINGS, TD_MPC2_SETTINGS, USE_ALGO, WEIGHTING_RULE
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
     TD3_ALGO, TDMPC2_ALGO, WEAK_COMP_ALGO, MPO_ALGO
 from src.util.contract import initAgent, initEnv, initValEnv, initSeed, setupLogging
@@ -154,9 +154,6 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
         for opponent in opponent_pool.keys()
     }
 
-    # df: We currently do not support opponent training.
-    # memory_opponent = ReplayMemory(capacity = BUFFER_SIZE, device = DEVICE)
-
     for i_training in range(1, NUM_TRAINING_EPISODES + 1):
         # We track for each episode how high the reward was
         t_start = time.time()
@@ -180,14 +177,10 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
             opponent = self_opponent
             opponent_name = USE_ALGO
         else:
-            # Select an opponent based on win rates. Currently, it prefers sampling winning rates ~0.5
-            # example 1: win_rate = 0.8 -> 1 - abs(0.5 - 0.8) = 1 - 0.3 = 0.7
-            # example 2: win_rate = 0.5 -> 1 - abs(0.5 - 0.5) = 1 - 0.0 = 1.0 -> preferred opponent
-            # example 3: win_rate = 0.1 -> 1 - abs(0.5 - 0.1) = 1 - 0.4 = 0.6
+            # Select an opponent based on the defined weighting rule
             _win_rates = {key: value["WIN_RATE"] for key, value in opponent_statistics.items()}
-            opponent_name = \
-                random.choices(list(opponent_pool.keys()),
-                               weights = [1 - abs(0.5 - _win_rates[o]) for o in opponent_pool])[0]
+            opponent_name = random.choices(list(opponent_pool.keys()),
+                                           weights = [WEIGHTING_RULE(_win_rates[o]) for o in opponent_pool])[0]
             opponent = opponent_pool[opponent_name]
 
         # For reproducibility of the training, we use predefined seeds

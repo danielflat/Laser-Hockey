@@ -35,7 +35,7 @@ class CompAgent(Agent):
         raise NotImplementedError
 
     def loadModel(self, file_name: str) -> None:
-        raise NotImplementedError
+        pass
 
     def import_checkpoint(self, checkpoint: dict) -> None:
         raise NotImplementedError

@@ -6,6 +6,7 @@ from time import localtime, strftime
 
 from src.util.constants import ADAM, ADAMW, DDPG_ALGO, DQN_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
+from src.util.directoryutil import get_path
 
 _DEFAULT_OPTIMIZER = {
     "OPTIM_NAME": ADAM,  # Which optimizer to use
@@ -40,12 +41,12 @@ SETTINGS = {
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
 
         # Environment settings
-        "USE_ENV": HOCKEY,  # The used environment
+        "USE_ENV": PENDULUM,  # The used environment
         "PROXY_REWARDS": False,  # If the agent should get proxy rewards (works only with HOCKEY)
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
-        "USE_ALGO": DDPG_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
+        "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
 
         # Defining training loop
         "BUFFER_SIZE": 1_000,  # How many items can be stored in the replay buffer?
@@ -75,8 +76,11 @@ SETTINGS = {
         # Frequency of self-play episodes. Play 1/#Number against an agent from the other pool. Play #Number-1/#Number against a version of itself
         "SELF_PLAY_KEEP_AGENT_FREQUENCY": 5000,
         # Put a checkpoint of your agent after x iterations into your opponent pool?
-        "SELF_PLAY_UPDATE_FREQUENCY": 500  # After how many iterations do you want to hard-update the self_opponent?
+        "SELF_PLAY_UPDATE_FREQUENCY": 500,  # After how many iterations do you want to hard-update the self_opponent?
+        "WEIGHTING_RULE": lambda win_rate: (1 - win_rate) + 0.1,
+        # The rule for weighting the opponents in the opponent_pool
     },
+
     # The settings for the agent.py
     "AGENT": {
         # GENERAL SETTINGS
@@ -147,10 +151,11 @@ SETTINGS = {
                 "USE_FUSION": torch.cuda.is_available()
                 # if we have CUDA, we can use the fusion implementation of Adam -> Faster
             },
-            "LOSS_FUNCTION": SMOOTH_L1_LOSS,
+            "LOSS_FUNCTION": MSE_LOSS,
         },
         "NOISE": _DEFAULT_NOISE,
-        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the DDPG Hockey agent?
+        "CHECKPOINT_NAME": get_path("good_checkpoints/hockey_ddpg_smoothl1_25-01-22 17_36_56_100000.pth"),
+        # which checkpoint should be used for the DDPG Hockey agent?
     },
     # The specific settings for the TD3 agent
     "TD3": {
@@ -182,7 +187,8 @@ SETTINGS = {
         "NUM_LAYERS": 5,  # num hidden layers, only changed if target_net == false
         "BATCHNORM_MOMENTUM": 0.9,  # momentum for batchnorm, only used if target_net == false
         "NOISE": _DEFAULT_NOISE,
-        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the TD3 Hockey agent?
+        "CHECKPOINT_NAME": get_path("good_checkpoints/hockey_ddpg_smoothl1_25-01-22 17_36_56_100000.pth"),
+        # which checkpoint should be used for the TD3 Hockey agent?
     },
     "SAC": {
         "OPTIMIZER": _DEFAULT_OPTIMIZER,
@@ -307,6 +313,7 @@ SELF_PLAY_KEEP_AGENT_FREQUENCY = MAIN_SETTINGS["SELF_PLAY_KEEP_AGENT_FREQUENCY"]
 PLOT_FREQUENCY = MAIN_SETTINGS["PLOT_FREQUENCY"]
 BATTLE_STATISTICS_FREQUENCY = MAIN_SETTINGS["BATTLE_STATISTICS_FREQUENCY"]
 SELF_PLAY_UPDATE_FREQUENCY = MAIN_SETTINGS["SELF_PLAY_UPDATE_FREQUENCY"]
+WEIGHTING_RULE = MAIN_SETTINGS["WEIGHTING_RULE"]
 
 BATCH_SIZE = AGENT_SETTINGS["BATCH_SIZE"]
 

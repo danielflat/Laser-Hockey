@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 import gymnasium
 import logging
 import numpy as np
@@ -165,12 +167,14 @@ class TDMPC2Agent(Agent, nn.Module):
         self.log_std_max = td_mpc2_settings["LOG_STD_MAX"]
         self.log_std_dif = self.log_std_max - self.log_std_min
         self.entropy_coef = td_mpc2_settings["ENTROPY_COEF"]
-        # self.rho = 0.5 the _discount parameter in the paper. I don't know why they used 0.5
         self.enc_lr_scale = td_mpc2_settings["ENC_LR_SCALE"]
         self.lr = td_mpc2_settings["OPTIMIZER"]["LEARNING_RATE"]
         self.consistency_coef = td_mpc2_settings["CONSISTENCY_COEF"]
         self.reward_coef = td_mpc2_settings["REWARD_COEF"]
         self.q_coef = td_mpc2_settings["Q_COEF"]
+
+        # MPPI: we save the mean from the previous planning in this variable to make the planning better
+        self._prior_mean = torch.zeros(self.horizon - 1, self.action_size, device = self.device)
 
         self.encoder_net = EncoderNet(state_size = state_size, latent_size = self.latent_size).to(self.device)
         self.dynamics_net = DynamicsNet(latent_size = self.latent_size, action_size = self.action_size).to(self.device)
@@ -323,27 +327,27 @@ class TDMPC2Agent(Agent, nn.Module):
         Returns:
             torch.Tensor: Action to take in the environment at the current timestep.
         """
-        # Sample policy trajectories
+        # Step 01: we use our prior policy net to give some action proposals
         latent_state = self.encoder_net(state)
-        if self.num_trajectories > 0:
-            pi_actions = torch.empty(self.horizon, self.num_trajectories, self.action_size, device = self.device)
-            _latent_state = latent_state.repeat(self.num_trajectories, 1)
-            for t in range(self.horizon - 1):
-                pi_actions[t], _ = self._predict_action(_latent_state)
-                _latent_state = self.dynamics_net(_latent_state, pi_actions[t])
-            pi_actions[-1], _ = self._predict_action(_latent_state)
+        pi_actions = torch.empty(self.horizon, self.num_trajectories, self.action_size, device = self.device)
+        _latent_state = latent_state.repeat(self.num_trajectories, 1)
+        for t in range(self.horizon - 1):
+            pi_actions[t], _ = self._predict_action(_latent_state)
+            _latent_state = self.dynamics_net(_latent_state, pi_actions[t])
+        pi_actions[-1], _ = self._predict_action(_latent_state)
 
-        # Initialize state and parameters
+        # Step 02: The rest of the action proposals are done by the MPPI algorithm.
+        # Initialize state and parameters to prepare MPPI.
         latent_state = latent_state.repeat(self.num_samples, 1)
         mean = torch.zeros(self.horizon, self.action_size, device = self.device)
+        mean[:-1] = self._prior_mean  # get the mean from the planning before
         std = torch.full((self.horizon, self.action_size), self.max_std, dtype = torch.float, device = self.device)
         actions = torch.empty(self.horizon, self.num_samples, self.action_size, device = self.device)
-        if self.num_trajectories > 0:
-            actions[:, :self.num_trajectories] = pi_actions
+        actions[:, :self.num_trajectories] = pi_actions
 
         # Iterate MPPI
         for _ in range(self.mmpi_iterations):
-            # Sample actions
+            # Step 03: Sample random actions by using the mean and std.
             r = torch.randn(self.horizon, self.num_samples - self.num_trajectories, self.action_size,
                             device = std.device)
             actions_sample = mean.unsqueeze(1) + std.unsqueeze(1) * r
@@ -351,27 +355,32 @@ class TDMPC2Agent(Agent, nn.Module):
             actions[:, self.num_trajectories:] = actions_sample
 
             # Compute elite actions
-            value = self._estimate_q_of_action_sequence(latent_state, actions).nan_to_num(0)
+            value = self._estimate_q_of_action_sequence(latent_state, actions)
             elite_idxs = torch.topk(value.squeeze(1), self.num_elites, dim = 0).indices
             elite_value, elite_actions = value[elite_idxs], actions[:, elite_idxs]
 
-            # Update parameters
-            max_value = elite_value.max(0).values
-            score = torch.exp(self.temperature * (elite_value - max_value))
-            score = score / score.sum(0)
+            # Update score, mean and std. parameters for the next iteration
+            score = torch.softmax(self.temperature * elite_value, dim = 0)
             mean = (score.unsqueeze(0) * elite_actions).sum(dim = 1) / (score.sum(0) + 1e-9)
             std = ((score.unsqueeze(0) * (elite_actions - mean.unsqueeze(1)) ** 2).sum(dim = 1) / (
                     score.sum(0) + 1e-9)).sqrt()
             std = std.clamp(self.min_std, self.max_std)
 
-        # Select action
-        rand_idx = mathutil.gumbel_softmax_sample(
-            score.squeeze(1))  # gumbel_softmax_sample is compatible with cuda graphs
-        actions = torch.index_select(elite_actions, 1, rand_idx).squeeze(1)
-        a, std = actions[0], std[0]
+        # Select action by sampling the one with the highest score w.r.t. gumbel noise perturbation
+        gumbel_noise = torch.distributions.Gumbel(0, 1).sample(score.shape)
+        noisy_scores = (score + gumbel_noise).squeeze()
+        selected_index = torch.argmax(noisy_scores, dim = 0)
+        planned_action_sequence = elite_actions[:, selected_index, :]
+        planned_action, std = planned_action_sequence[0], std[0]
+
+        # save the mean for the next planning
+        self._prior_mean = copy.deepcopy(mean[1:])
+
+        # in training mode, we add some noise
         if is_training:
-            a = a + std * torch.randn(self.action_size, device = self.device)
-        return a.clamp(self.min_action_torch, self.max_action_torch).cpu().numpy()
+            # planned_action = planned_action + std * torch.randn(self.action_size, device = self.device)   # adding some noise based on the std.
+            planned_action = planned_action + self.noise_factor * self.noise.sample()  # using pink noise
+        return planned_action.clamp(self.min_action_torch, self.max_action_torch).cpu().numpy()
 
     def _update(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,
                 done: torch.Tensor) -> Dict[str, int | float | bool | Any]:
@@ -553,4 +562,4 @@ class TDMPC2Agent(Agent, nn.Module):
         return td_target
 
     def reset(self):
-        raise NotImplementedError
+        self._prior_mean = torch.zeros(self.horizon - 1, self.action_size, device = self.device)

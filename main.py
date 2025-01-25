@@ -4,7 +4,7 @@ import torch
 import yaml
 
 from src.replaymemory import ReplayMemory
-from src.settings import AGENT_SETTINGS, BUFFER_SIZE, CHECKPOINT_NAME, DEVICE, DQN_SETTINGS, \
+from src.settings import AGENT_SETTINGS, BUFFER_SIZE, CHECKPOINT_NAME, DDPG_SETTINGS, DEVICE, DQN_SETTINGS, \
     MODEL_NAME, NUMBER_DISCRETE_ACTIONS, PROXY_REWARDS, RENDER_MODE, SAC_NUM_EPISODES_PER_TRAINING_EPOCH, \
     SAC_VALIDATION_FREQ, SEED, SELF_PLAY, SETTINGS, \
     USE_ALGO, USE_ENV, USE_TF32
@@ -68,7 +68,8 @@ def main():
         dqn_agent = initAgent(use_algo = DQN_ALGO, env = env, device = DEVICE,
                               checkpoint_name = DQN_SETTINGS["CHECKPOINT_NAME"])
         # ppo_agent = initAgent(use_algo = PPO_ALGO, env = env, device = DEVICE, checkpoint_name = PPO_SETTINGS["CHECKPOINT_NAME"])
-        # ddpg_agent = initAgent(use_algo = DDPG_ALGO, env = env, device = DEVICE, checkpoint_name = DDPG_SETTINGS["CHECKPOINT_NAME"])
+        ddpg_agent = initAgent(use_algo = DDPG_ALGO, env = env, device = DEVICE,
+                               checkpoint_name = DDPG_SETTINGS["CHECKPOINT_NAME"])
         # td3_agent = initAgent(use_algo = TD3_ALGO, env = env, device = DEVICE, checkpoint_name = TD3_SETTINGS["CHECKPOINT_NAME"])
         # sac_agent = initAgent(use_algo = SAC_ALGO, env = env, device = DEVICE, checkpoint_name = SAC_SETTINGS["CHECKPOINT_NAME"])
         # mpo_agent = initAgent(use_algo = MPO_ALGO, env = env, device = DEVICE, checkpoint_name = MPO_SETTINGS["CHECKPOINT_NAME"])
@@ -78,9 +79,9 @@ def main():
         random_agent.setMode(eval = True)
         weak_comp_agent.setMode(eval = True)
         strong_comp_agent.setMode(eval = True)
-        dqn_agent.setMode(eval = True)
+        # dqn_agent.setMode(eval = True)
         # ppo_agent.setMode(eval = True)
-        # ddpg_agent.setMode(eval = True)
+        ddpg_agent.setMode(eval = True)
         # td3_agent.setMode(eval = True)
         # sac_agent.setMode(eval = True)
         # mpo_agent.setMode(eval = True)
@@ -90,13 +91,13 @@ def main():
             RANDOM_ALGO: random_agent,
             WEAK_COMP_ALGO: weak_comp_agent,
             STRONG_COMP_ALGO: strong_comp_agent,
-            # DQN_ALGO: dqn_agent,
+            #DQN_ALGO: dqn_agent,
             # PPO_ALGO: ppo_agent,
-            # DDPG_ALGO: ddpg_agent,
-            # TD3_ALGO: td3_agent,
-            # SAC_ALGO: sac_agent,
-            # MPO_ALGO: mpo_agent,
-            # TDMPC2_ALGO: mpo_agent,
+            f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
+            # f"{TD3_ALGO}_Checkpoint": td3_agent,
+            # f"{SAC_ALGO}_Checkpoint": sac_agent,
+            # f"{MPO_ALGO}_Checkpoint": mpo_agent,
+            # f"{TDMPC2_ALGO}_Checkpoint": tdmpc2_agent,
         }
 
         # if you want to use self-play, we have to init the self opponent agent
