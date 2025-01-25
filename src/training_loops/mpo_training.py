@@ -27,6 +27,7 @@ from src.util.plotutil import plot_training_metrics, plot_mpo_training_metrics
 def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, self_opponent = Agent):
     """
     TODO: Add support for discrete action space 
+    
     """
     
     logging.info("Starting MPO training!")
@@ -57,7 +58,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             opponent = random.choice(list(opponent_pool.values()))
         
         # Reset the environment with starting condition and get first states
-        if i_episode % 2:
+        if i_episode % 10 == 0:
             state, info = env.reset(seed=SEED + i_episode, one_starting=False)
         else:
             state, info = env.reset(seed=SEED + i_episode, one_starting=True)
@@ -83,12 +84,12 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             done = terminated or truncated
             
             # Some reward adjustments
-            if info["winner"] == 1:
-                reward = 10
-            elif info["winner"] == -1:
-                reward = -10
-            elif info["winner"] == 0 and done:
-                reward = -5
+            #if info["winner"] == 1:
+            #    reward = 10
+            #elif info["winner"] == -1:
+            #    reward = -10
+            #elif info["winner"] == 0 and done:
+            #    reward = -5
             
             if CURIOSITY is not None:
                 reward += CURIOSITY * agent.icm.compute_intrinsic_reward(state, action_agent, next_state)
@@ -142,12 +143,12 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
         if SELF_PLAY and i_episode % SELF_PLAY_UPDATE_FREQUENCY == 0:
             self_opponent.import_checkpoint(agent.export_checkpoint())
         
-        # Validation, checkpointing and plotting
+        # Validation and checkpointing 
         if (i_episode + 1) % (CHECKPOINT_ITER) == 0 and (len(memory) >= 100 * BATCH_SIZE):
-            assert CHECKPOINT_ITER % EPISODE_UPDATE_ITER == 0, "Checkpointing freq should be a multiple of update freq!"
+            assert CHECKPOINT_ITER % EPISODE_UPDATE_ITER == 0, "Checkpointing freq should be larger than update freq!"
             
             # Validation
-            opponent_metrics = validate_mpo_hockey(agent, val_env, opponent_pool, num_episodes=100, 
+            opponent_metrics = validate_mpo_hockey(agent, val_env, opponent_pool, num_episodes=500, 
                                                    seed_offset=SEED + total_episodes)
             val_opponent_metrics.append(opponent_metrics)
             
