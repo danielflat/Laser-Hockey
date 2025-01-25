@@ -100,6 +100,7 @@ def main():
         }
 
         # if you want to use self-play, we have to init the self opponent agent
+        self_opponent = None
         if SELF_PLAY:
             # First, create a copy of the main agent
             self_opponent = initAgent(use_algo = USE_ALGO, env = env, device = DEVICE, checkpoint_name = None)
@@ -140,7 +141,7 @@ def main():
             )
 
         elif USE_ALGO == MPO_ALGO:
-            do_mpo_hockey_training(env = env, agent = agent, memory = memory,
+            do_mpo_hockey_training(env = env, val_env = val_env, agent = agent, memory = memory,
                                    opponent_pool = copy.deepcopy(opponent_pool),
                                    self_opponent = self_opponent)
         else:
