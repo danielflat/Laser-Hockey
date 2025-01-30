@@ -94,3 +94,61 @@ def gumbel_softmax_sample(p, temperature = 1.0, dim = 0):
     gumbels = (logits + gumbels) / temperature  # ~Gumbel(logits,tau)
     y_soft = gumbels.softmax(dim)
     return y_soft.argmax(-1)
+
+def categorical_kl(p1: torch.Tensor, p2:torch.Tensor) -> torch.Tensor:
+    """
+    calculates KL between two Categorical distributions. 
+    Copied from the Github https://github.com/daisatojp/mpo/blob/master/mpo/mpo.py 
+    :param p1: (B, D) the first distribution
+    :param p2: (B, D) the second distribution
+    """
+    #avoid zero division
+    p1 = torch.clamp_min(p1, 0.0001)  
+    p2 = torch.clamp_min(p2, 0.0001)  
+    
+    return torch.mean((p1 * torch.log(p1 / p2)).sum(dim=-1))
+    
+def gaussian_kl(μi: torch.Tensor, μ: torch.Tensor, Ai: torch.Tensor, A: torch.Tensor) -> torch.Tensor:
+    """
+    Decoupled KL between two multivariate gaussian distributions f (updated policy) and g (previous policy).
+
+    C_μ = KL(g(x|μi,Σi)||f(x|μ,Σi))
+    C_Σ = KL(g(x|μi,Σi)||f(x|μi,Σ))
+    :param μi: (B, n) mean fixed to the mean of the previous policy g
+    :param μ: (B, n) mean of the updated policy f
+    :param Ai: (B, n, n) lower triangular matrix of the covariance of the previous policy g
+    :param A: (B, n, n) lower triangular matrix of the covariance of the updated policy f
+    :return: C_μ, C_Σ: scalar
+        mean and covariance terms of the KL
+    :return: mean of determinanats of Σi, Σ
+    ref : https://stanford.edu/~jduchi/projects/general_notes.pdf page.13
+    """
+    def bt(m):
+        return m.transpose(dim0=-2, dim1=-1)
+
+    def btr(m):
+        return m.diagonal(dim1=-2, dim2=-1).sum(-1)
+    
+    n = A.size(-1)
+    μi = μi.unsqueeze(-1)  # (B, n, 1)
+    μ = μ.unsqueeze(-1)  # (B, n, 1)
+    Σi = Ai @ bt(Ai)  # (B, n, n)
+    Σ = A @ bt(A)  # (B, n, n)
+    
+    # Trying to fix inf values via logdet
+    Σi_logdet = Σi.logdet()  # (B,)
+    Σ_logdet = Σ.logdet()  # (B,)
+    
+    # Inverse of the covariance matrices
+    Σi_inv = Σi.inverse()  # (B, n, n)
+    Σ_inv = Σ.inverse()  # (B, n, n)
+    
+    # Inner terms of the KL divergence
+    inner_μ = ((μ - μi).transpose(-2, -1) @ Σi_inv @ (μ - μi)).squeeze()  # (B,)
+    inner_Σ = Σ_logdet - Σi_logdet - n + btr(Σ_inv @ Σi) # (B,)
+    
+    # Mean and covariance terms of the KL divergence
+    C_μ = 0.5 * torch.mean(inner_μ)
+    C_Σ = 0.5 * torch.mean(inner_Σ)
+    
+    return C_μ, C_Σ

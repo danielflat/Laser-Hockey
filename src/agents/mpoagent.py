@@ -13,6 +13,7 @@ from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util.directoryutil import get_path
 from src.util.icmutil import ICM
+from src.util.mathutil import categorical_kl, gaussian_kl
 
 """
 Author : Andre Pfrommer
@@ -145,7 +146,7 @@ class Critic(nn.Module):
         if self.continuous:
             self.da = action_size
         else:
-            self.da = 7
+            self.da = 7 #action_space.n
             
         if self.continuous:
             self.net = nn.Sequential(
@@ -387,66 +388,6 @@ class MPOAgent(Agent):
         loss = self.criterion(q_new, q) #(B, B)
         return loss, q_new
     
-    def categorical_kl(self, p1, p2):
-        """
-        calculates KL between two Categorical distributions
-        :param p1: 
-            (B, D) the first distribution
-        :param p2: 
-            (B, D) the second distribution
-        """
-        #avoid zero division
-        p1 = torch.clamp_min(p1, 0.0001)  
-        p2 = torch.clamp_min(p2, 0.0001)  
-        return torch.mean((p1 * torch.log(p1 / p2)).sum(dim=-1))
-    
-    def gaussian_kl(self, μi, μ, Ai, A):
-        """
-        Decoupled KL between two multivariate gaussian distributions f (updated policy) and g (previous policy).
-
-        C_μ = KL(g(x|μi,Σi)||f(x|μ,Σi))
-        C_Σ = KL(g(x|μi,Σi)||f(x|μi,Σ))
-        :param μi: (B, n) mean fixed to the mean of the previous policy g
-        :param μ: (B, n) mean of the updated policy f
-        :param Ai: (B, n, n) lower triangular matrix of the covariance of the previous policy g
-        :param A: (B, n, n) lower triangular matrix of the covariance of the updated policy f
-        :return: C_μ, C_Σ: scalar
-            mean and covariance terms of the KL
-        :return: mean of determinanats of Σi, Σ
-        ref : https://stanford.edu/~jduchi/projects/general_notes.pdf page.13
-        """
-        def bt(m):
-            return m.transpose(dim0=-2, dim1=-1)
-
-        def btr(m):
-            return m.diagonal(dim1=-2, dim2=-1).sum(-1)
-        
-        n = A.size(-1)
-        μi = μi.unsqueeze(-1)  # (B, n, 1)
-        μ = μ.unsqueeze(-1)  # (B, n, 1)
-        Σi = Ai @ bt(Ai)  # (B, n, n)
-        Σ = A @ bt(A)  # (B, n, n)
-        
-        # determinant can be minus due to numerical calculation error
-        # https://github.com/daisatojp/mpo/issues/11. 
-        # Trying to fix inf values via logdet
-        Σi_logdet = Σi.logdet()  # (B,)
-        Σ_logdet = Σ.logdet()  # (B,)
-        #Σi_det = torch.clamp_min(Σi_det, 1e-4)
-        #Σ_det = torch.clamp_min(Σ_det, 1e-4)
-        
-        #Inverse of the covariance matrices
-        Σi_inv = Σi.inverse()  # (B, n, n)
-        Σ_inv = Σ.inverse()  # (B, n, n)
-        
-        inner_μ = ((μ - μi).transpose(-2, -1) @ Σi_inv @ (μ - μi)).squeeze()  # (B,)
-        inner_Σ = Σ_logdet - Σi_logdet - n + btr(Σ_inv @ Σi) # (B,)
-        
-        #Mean and covariance terms of the KL divergence
-        C_μ = 0.5 * torch.mean(inner_μ)
-        C_Σ = 0.5 * torch.mean(inner_Σ)
-        
-        return C_μ, C_Σ
 
     def find_qij_dist(self, q_target: torch.Tensor, π_target: torch.Tensor) -> torch.Tensor:
         """
@@ -500,6 +441,155 @@ class MPOAgent(Agent):
         qij = torch.softmax(q_target / self.η, dim=1) # (K, N) or (K, da)
         return qij
 
+    def evaluation_step(self, states: torch.Tensor):
+        """
+        Evaluation step in the MPO algorithm. 
+        Maximization of the lower bounnd w.r.t the optimal policy by regularizing the q values towards the current best policy.
+        This is done in a nonparametric way by: 
+            1. Get the output of the target policy
+            2. For each of the K states, sample N actions
+            3. Compute the target q values for each action
+            NOTE: In the discrete case, we dont sample but compute the q values for all possible actions
+            4. Minimize the dual function to find the action weights qij
+        
+        :states: (B, ds) the batch of states
+        :N: (int) the number of actions to sample per state
+        :K: (int) the number of sampled states
+        """
+        N = self.sample_action_num
+        K = self.batch_size
+        
+        with torch.no_grad():
+            if self.continuous:
+                # 1. We first get the mean and covariance of the target policy
+                b_μ, b_A = self.target_actor(states) # (K,) K batch size
+                dist = MultivariateNormal(b_μ, scale_tril=b_A) # (K,)
+                # 2. Sample N actions per state (we have K states)
+                sampled_actions = dist.sample((N,))  # (N, K, da)
+                expanded_states = states.unsqueeze(0).expand(N, -1, -1)  # (N, K, ds)
+                # 3. Get the target q values for the K sampled states and N actions
+                target_q = self.target_critic(
+                    expanded_states.reshape(-1, self.ds),  # (N * K, ds)
+                    sampled_actions.reshape(-1, self.da)  # (N * K, da)
+                ).reshape(N, K)  # (N, K)
+                # 4. Minimize the dual function to find the action weights qij
+                qij = self.find_qij_dist(target_q.transpose(0, 1), None) # (K, N) 
+                
+                return sampled_actions, qij, b_μ, b_A
+                
+            else:
+                # 1. Here we also get the policy output first, but again we dont sample 
+                b, _ = self.target_actor(states) # (K, da)
+                dist = Categorical(probs=b)
+                # 2. Compute probabilities over all actions
+                b_p = dist.probs  # (K, da)
+                # 3. Get the target q values over all discrete actions
+                target_q = self.target_critic(states, None) # (K, da)
+                # 4. Minimize the dual function to find the action weights qij
+                qij = self.find_qij_dist(target_q, b_p) # (K, da) 
+                
+                return None, qij, b, None
+        
+    def maximization_step(self, states: torch.Tensor, sampled_actions: torch.Tensor, qij: torch.Tensor, 
+                          b_μ: torch.Tensor, b_A: torch.Tensor, b_p: torch.Tensor) -> (torch.Tensor, float, float):
+        """
+        Maximization step in the MPO algorithm.
+        Improve the current policy by maximizing π towards the action weights qij.
+        This is done by:
+            1. Get the output of the current policy to compute the MLE loss using qij
+            2. Get the KL divergence between the current and target policy
+            3. Update the Lagrangian multipliers by gradient descent (inner optimization loop)
+            4. Combine everything to get the final loss for the actor (outer optimization loop)
+        
+        :states: (B, ds) the batch of states
+        :sampled_actions: (N, K, da) the sampled actions
+        :qij: (K, N) or (K, da) the action weights
+        :b_μ: (K, da) the mean of the target policy, used in the continuous case
+        :b_A: (K, da, da) the covariance matrix of the target policy, used in the continuous case
+        :b_p: (K, da) the probabilities of the target policy, used in the discrete case
+        """
+        N = self.sample_action_num
+        K = self.batch_size
+        
+        #TODO: maybe delete this loop?
+        for _ in range(self.mstep_iteration_num):
+            
+            if self.continuous:
+                # 1. Mean and covariance of the current policy
+                μ, A = self.actor(states) # (K,)
+                # Mulitvariave Gaussian distributions with either the mean or covariance fixed to the target policy output
+                π1 = MultivariateNormal(loc=μ, scale_tril=b_A)  # (K,)
+                π2 = MultivariateNormal(loc=b_μ, scale_tril=A)  # (K,)
+                
+                # First we compute the known MLE Loss without the KL constraints 
+                # Note that here we have 2 actor objectives, so we have to compute the log prob for both
+                loss_MLE = torch.mean(
+                    qij.transpose(0, 1) * (
+                        π1.expand((N, K)).log_prob(sampled_actions)  # (N, K)
+                        + π2.expand((N, K)).log_prob(sampled_actions)  # (N, K)
+                    )
+                )
+                
+                # 2. Get the KL divergencies for the above defined distributions
+                kl_μ, kl_Σ = gaussian_kl(μi=b_μ, μ=μ, Ai=b_A, A=A)
+                
+                # 3. Update lagrangian multipliers α by gradient descent
+                lagrangian_loss = self.η_μ_kl * (self.ε_kl_μ - kl_μ) + self.η_Σ_kl * (self.ε_kl_Σ - kl_Σ)
+                self.lagrangian_optimizer_cont.zero_grad()
+                lagrangian_loss.backward(retain_graph=True)
+                self.lagrangian_optimizer_cont.step()
+                
+                # Detaching the Lagrangians
+                η_μ_kl_np = self.η_μ_kl.detach().item()
+                η_Σ_kl_np = self.η_Σ_kl.detach().item() 
+                
+                # 4. Then we add the KL constraints to the loss (outer optimization loop)
+                # last eq of p.5
+                if self.use_kl_constriant:
+                    loss_actor = -(
+                        loss_MLE
+                        + η_μ_kl_np * (self.ε_kl_μ - kl_μ)
+                        + η_Σ_kl_np * (self.ε_kl_Σ - kl_Σ)
+                    )
+                else:
+                    # If we dont use KL constraints, we only optimize the MLE loss
+                    loss_actor = -loss_MLE
+                    
+                return loss_actor, η_μ_kl_np, η_Σ_kl_np
+                    
+            else:
+                # Creates action tensor of shape (da, K), where each of the K rows contains repeated indices ranging from 0 to self.da - 1
+                actions = torch.arange(self.da).unsqueeze(1).expand(self.da, K).to(self.device)  # (da, K)
+                
+                # 1. Action output of the current parametric policy
+                π_p, _ = self.actor.forward(states)  # (K, da)
+                π = Categorical(probs=π_p)  # (K,)
+                π_log = π.log_prob(actions).T  # (K, da)
+
+                # MLE loss
+                loss_MLE = torch.mean(qij * π_log) # (K, da)
+                
+                # 2. KL divergence btw the old and new policy, now a categorical one
+                kl = categorical_kl(p1=π_p, p2=b_p).detach()
+                
+                # 3. Inner optimization loop
+                lagrangian_loss = self.η_kl * (self.ε_kl - kl)
+                self.lagrangian_optimizer_disc.zero_grad()
+                lagrangian_loss.backward(retain_graph=True)
+                self.lagrangian_optimizer_disc.step()
+                
+                # Detaching the Lagrangian if we use it
+                η_kl_np = self.η_kl.detach().item()
+                
+                # 4. Final loss
+                if self.use_kl_constriant:
+                    loss_actor = -(loss_MLE + η_kl_np * (self.ε_kl - kl))
+                else:
+                    # If we dont use KL constraints, we only optimize the MLE loss
+                    loss_actor = -loss_MLE
+                
+                return loss_actor, η_kl_np, None
+                    
     def optimize(self, memory: ReplayMemory, episode_i: int) -> List[float]:
         """
         Optimize actor and critic networks based on experience replay.
@@ -507,12 +597,9 @@ class MPOAgent(Agent):
             2. E-Step of Policy Improvement: Sample from Critic and update dual variable η to find action weights qij
             3. M-Step of Policy Improvement: Update Actor via gradient ascent on the MLP loss
         
-        :param memory:
-            (ReplayMemory) the replay memory
-        :param episode_i:
-            (int) the current episode number
-        :return:    
-            (list[float]) the losses of the actor and critic networks
+        :param memory: (ReplayMemory) the replay memory
+        :param episode_i: (int) the current episode number
+        :return: (list[float]) the losses of the actor and critic networks
         """
         losses = []
         
@@ -536,116 +623,25 @@ class MPOAgent(Agent):
                 nn.utils.clip_grad_norm_(self.critic.parameters(), self.gradient_clipping_value, 2)
             self.critic_optimizer.step()
 
-            # 2: E-Step Finding action weights via sampling and non-parametric optimization (4.1 in paper)
-            with torch.no_grad():
-                if self.continuous:
-                    # We first get the mean and covariance of the target policy
-                    b_μ, b_A = self.target_actor(states) # (K,) K batch size
-                    dist = MultivariateNormal(b_μ, scale_tril=b_A) # (K,)
-                    # Sample N actions per state (we have K states)
-                    sampled_actions = dist.sample((N,))  # (N, K, da)
-                    expanded_states = states.unsqueeze(0).expand(N, -1, -1)  # (N, K, ds)
-                    # Get the target q values for the K sampled states and N actions
-                    target_q = self.target_critic(
-                        expanded_states.reshape(-1, self.ds),  # (N * K, ds)
-                        sampled_actions.reshape(-1, self.da)  # (N * K, da)
-                    ).reshape(N, K)  # (N, K)
-                    # Minimize the dual function to find the action weights qij
-                    qij = self.find_qij_dist(target_q.transpose(0, 1), None) # (K, N) 
-                    
-                else:
-                    # Here we also get the policy output first, but again we dont sample 
-                    b, _ = self.target_actor(states) # (K, da)
-                    dist = Categorical(probs=b)
-                    # Compute probabilities over all actions
-                    b_p = dist.probs  # (K, da)
-                    # Get the target q values over all discrete actions
-                    target_q = self.target_critic(states, None) # (K, da)
-                    # Minimize the dual function to find the action weights qij
-                    qij = self.find_qij_dist(target_q, b_p) # (K, da) 
+            # 2: E-Step: Finding action weights via sampling and non-parametric optimization (4.1 in paper)
+            if self.continuous:
+                sampled_actions, qij, b_μ, b_A = self.evaluation_step(states)
+            else:
+                _, qij, b_p, _ = self.evaluation_step(states)
 
             # 3. M step. Policy Improvement (4.2 in paper)
             # Fitting an improved policy using the sampled q-values via gradient optimization on the Policy and the lagrangian function 
-            for _ in range(self.mstep_iteration_num):
-                
-################################ CONTINUOUS OPTIMIZATION ################################
-                if self.continuous:
-                    # Mean and covariance of the current policy
-                    μ, A = self.actor(states) # (K,)
-                    # Mulitvariave Gaussian distributions with either the mean or covariance fixed to the target policy output
-                    π1 = MultivariateNormal(loc=μ, scale_tril=b_A)  # (K,)
-                    π2 = MultivariateNormal(loc=b_μ, scale_tril=A)  # (K,)
-                    
-                    # Get the KL divergencies for the above defined distributions
-                    kl_μ, kl_Σ = self.gaussian_kl(μi=b_μ, μ=μ, Ai=b_A, A=A)
-                    
-                    # Update lagrangian multipliers α by gradient descent
-                    lagrangian_loss = self.η_μ_kl * (self.ε_kl_μ - kl_μ) + self.η_Σ_kl * (self.ε_kl_Σ - kl_Σ)
-                    self.lagrangian_optimizer_cont.zero_grad()
-                    lagrangian_loss.backward(retain_graph=True)
-                    self.lagrangian_optimizer_cont.step()
-                    
-                    # Detaching the Lagrangians
-                    η_μ_kl_np = self.η_μ_kl.detach().item()
-                    η_Σ_kl_np = self.η_Σ_kl.detach().item() 
-                    
-                    
-                    # First we compute the known MLE Loss without the KL constraints 
-                    # Note that here we have 2 actor objectives, so we have to compute the log prob for both
-                    loss_MLE = torch.mean(
-                        qij.transpose(0, 1) * (
-                            π1.expand((N, K)).log_prob(sampled_actions)  # (N, K)
-                            + π2.expand((N, K)).log_prob(sampled_actions)  # (N, K)
-                        )
-                    )
-                    # Then we add the KL constraints to the loss (outer optimization loop)
-                    # last eq of p.5
-                    if self.use_kl_constriant:
-                        loss_actor = -(
-                            loss_MLE
-                            + η_μ_kl_np * (self.ε_kl_μ - kl_μ)
-                            + η_Σ_kl_np * (self.ε_kl_Σ - kl_Σ)
-                        )
-                    else:
-                        # If we dont use KL constraints, we only optimize the MLE loss
-                        loss_actor = -loss_MLE
-
-################################ DISCRETE OPTIMIZATION ################################
-                else:
-                    # Creates action tensor of shape (da, K), where each of the K rows contains repeated indices ranging from 0 to self.da - 1
-                    actions = torch.arange(self.da).unsqueeze(1).expand(self.da, K).to(self.device)  # (da, K)
-                    
-                    # Action output of the current parametric policy
-                    π_p, _ = self.actor.forward(states)  # (K, da)
-                    π = Categorical(probs=π_p)  # (K,)
-                    π_log = π.log_prob(actions).T  # (K, da)
-                    
-                    # KL divergence btw the old and new policy, now a categorical one
-                    kl = self.categorical_kl(p1=π_p, p2=b_p).detach()
-                    
-                    # Inner optimization loop
-                    lagrangian_loss = self.η_kl * (self.ε_kl - kl)
-                    self.lagrangian_optimizer_disc.zero_grad()
-                    lagrangian_loss.backward(retain_graph=True)
-                    self.lagrangian_optimizer_disc.step()
-                    
-                    # Detaching the Lagrangian if we use it
-                    η_kl_np = self.η_kl.detach().item()
-                    
-                    # MLE loss
-                    loss_MLE = torch.mean(qij * π_log) # (K, da)
-                    
-                    # Final loss
-                    if self.use_kl_constriant:
-                        loss_actor = -(loss_MLE + η_kl_np * (self.ε_kl - kl))
-                    else:
-                        loss_actor = -loss_MLE
-                
-                self.actor_optimizer.zero_grad()
-                loss_actor.backward()
-                if self.use_gradient_clipping:
-                    nn.utils.clip_grad_norm_(self.actor.parameters(), self.gradient_clipping_value, 2)
-                self.actor_optimizer.step()
+            if self.continuous:
+                loss_actor, η_μ_kl_np, η_Σ_kl_np = self.maximization_step(states, sampled_actions, qij, b_μ, b_A, None)
+            else:
+                loss_actor, η_kl_np, _ = self.maximization_step(states, None, qij, None, None, b_p)
+            
+            # Backward pass in the actor network
+            self.actor_optimizer.zero_grad()
+            loss_actor.backward()
+            if self.use_gradient_clipping:
+                nn.utils.clip_grad_norm_(self.actor.parameters(), self.gradient_clipping_value, 2)
+            self.actor_optimizer.step()
             
             # Keep track of the losses
             if self.continuous:
@@ -653,7 +649,7 @@ class MPOAgent(Agent):
             else:
                 losses.append([loss_critic.item(), loss_actor.item(), η_kl_np, 0.0])
            
-        # Update the epsilon value
+        # Update the epsilon value, used for epsilon-greedy action selection
         self.adjust_epsilon(episode_i)
         
         # Update the target networks
@@ -719,8 +715,6 @@ class MPOAgent(Agent):
         self.critic.load_state_dict(checkpoint["critic"])
         self.target_actor.load_state_dict(checkpoint["target_actor"])
         self.target_critic.load_state_dict(checkpoint["target_critic"])
-        #self.η_μ_kl = checkpoint["lagrangian_µ"]
-        #self.η_Σ_kl = checkpoint["lagrangian_Σ"]
 
     def export_checkpoint(self) -> dict:
         checkpoint = {
@@ -728,8 +722,6 @@ class MPOAgent(Agent):
             "critic": self.critic.state_dict(),
             "target_actor": self.target_actor.state_dict(),
             "target_critic": self.target_critic.state_dict(),
-            #"lagrangian_µ": self.η_μ_kl,
-            #"lagrangian_Σ": self.η_Σ_kl,
         }
         return checkpoint
 
