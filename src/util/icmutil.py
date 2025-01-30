@@ -15,14 +15,14 @@ https://arxiv.org/abs/1705.05363
 And the github implementation:
 https://github.com/bonniesjli/icm
 """
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 class Swish(nn.Module):
     def forward(self, x):
-        return x * F.sigmoid(x)
+        return x * torch.sigmoid(x)
 
 def swish(x: torch.Tensor) -> torch.Tensor:
-    return x * F.sigmoid(x)
+    return x * torch.sigmoid(x)
 
 class Flatten(nn.Module):
     def forward(self, input):
@@ -30,12 +30,12 @@ class Flatten(nn.Module):
     
 class ICMModel(nn.Module):
     """ICM model for non-vision based tasks"""
-    def __init__(self, state_size: int, action_size: int, discrete: bool):
+    def __init__(self, state_size: int, action_size: int):
         super(ICMModel, self).__init__()
 
         self.state_size = state_size
         self.action_size = action_size
-        self.resnet_time = 2
+        self.resnet_time = 4
         self.device = device
         
         # Net to encode state and next state as feature vectors
@@ -73,7 +73,7 @@ class ICMModel(nn.Module):
             Swish(),
             nn.Linear(256, 256)
         )
-        #Second forward net in the Resnet structure
+        # Second forward net in the Resnet structure
         self.forward_net_2 = nn.Sequential(
             nn.Linear(self.action_size + 256, 256),
             Swish(),
@@ -121,10 +121,10 @@ class ICM():
         self, 
         state_size: int,
         action_size: int,
-        discrete: bool,
+        device = device,
         eta = 0.01):
         
-        self.model = ICMModel(state_size, action_size, discrete).to(device)
+        self.model = ICMModel(state_size, action_size)
         self.optimizer = optim.Adam(self.model.parameters(), lr = 1e-4)
         
         self.state_size = state_size
@@ -133,7 +133,6 @@ class ICM():
         self.MSE_loss = nn.MSELoss()
         self.eta = eta
         self.device = device
-        self.discrete = discrete
     
     def compute_intrinsic_reward(self, state: torch.Tensor, next_state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         """
@@ -144,17 +143,12 @@ class ICM():
         :param action: (B, da) the batch of possible actions
         :return: (B, ) the intrinsic rewards
         """
-        state = torch.FloatTensor(state).to(self.device)
-        next_state = torch.FloatTensor(next_state).to(self.device)
-        if self.discrete:
-            action = action.clone().detach().long().to(self.device)
-            action_onehot = int_to_one_hot(action, self.action_size)
-        else:
-            action_onehot = action
+        state = torch.FloatTensor(state)
+        next_state = torch.FloatTensor(next_state)
         
         # Forward pass through the model
         real_next_state_feature, pred_next_state_feature, _ = self.model(
-            state, next_state, action_onehot
+            state, next_state, action
         )
         
         # Compute intrinsic reward as the squared error between real and predicted feature version of the next state
@@ -172,25 +166,14 @@ class ICM():
         :param next_states: (B, ds) the batch of next states
         :param actions: (B, da) the batch of actions
         """
-        if self.discrete:
-            actions = actions.clone().detach().long().to(self.device)
-            #Onehot encoding
-            action_onehot = torch.FloatTensor(len(actions), self.action_size).to(self.device)
-            action_onehot.zero_()
-            action_onehot.scatter_(1, actions.view(-1, 1), 1)
-        else:
-            action_onehot = actions
-        
         real_next_state_feature, pred_next_state_feature, pred_action = self.model(
-            states, next_states, action_onehot)
+            states, next_states, actions)
         
-        if self.discrete:
-            inverse_loss = self.CE_loss(
-                pred_action, action_onehot)
-        else:
-            inverse_loss = self.MSE_loss(
-                pred_action, action_onehot)
-
+        # MSE Loss for the inverse model
+        inverse_loss = self.MSE_loss(
+            pred_action, actions)
+        
+        # MSE Loss for the forward model
         forward_loss = self.MSE_loss(
             pred_next_state_feature, real_next_state_feature.detach())
         
