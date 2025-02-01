@@ -41,7 +41,7 @@ SETTINGS = {
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
 
         # Environment settings
-        "USE_ENV": PENDULUM,  # The used environment
+        "USE_ENV": HOCKEY,  # The used environment
         "PROXY_REWARDS": False,  # If the agent should get proxy rewards (works only with HOCKEY)
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
@@ -265,14 +265,14 @@ SETTINGS = {
         "NOISE": _DEFAULT_NOISE,  # Which noise should we add
         "HORIZON": 3,  # How many steps do we want to consider while doing predictions
 
-        "MMPI_ITERATIONS": 3,  # How many iterations of MPPI should we use for planning
-        "NUM_TRAJECTORIES": 4,
-        "NUM_SAMPLES": 32,
-        "NUM_ELITES": 8,
+        "MMPI_ITERATIONS": 6,  # How many iterations of MPPI should we use for planning
+        "NUM_TRAJECTORIES": 8,
+        "NUM_SAMPLES": 256,
+        "NUM_ELITES": 64,
         "MIN_STD": 0.05,
         "MAX_STD": 2,
         "TEMPERATURE": 0.5,
-        "LATENT_SIZE": 256,
+        "LATENT_SIZE": 512,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
         "CHECKPOINT_NAME": None,  # which checkpoint should be used for the TD-MPC-2 Hockey agent?
