@@ -64,8 +64,10 @@ class Critic(nn.Module):
         return self.network(concat_input)
 
 class Actor(nn.Module):
-    def __init__(self, state_size: int, hidden_size: int, action_size: int):
+    def __init__(self, state_size: int, hidden_size: int, action_size: int, action_high: torch.Tensor):
         super().__init__()
+        
+        self.action_high  = action_high
 
         self.network = nn.Sequential(
             nn.Linear(state_size, hidden_size),
@@ -81,7 +83,7 @@ class Actor(nn.Module):
         Calculates the Actor values over all actions for the given state
         """
         action = self.network(state)
-        return action
+        return action * self.action_high
 
 ####################################################################################################
 # TD3 Agent
@@ -132,7 +134,9 @@ class TD3Agent(Agent):
                             bn_momentum=self.bn_momentum).to(device)
         self.Actor = Actor(state_size=state_size,
                         hidden_size=self.hidden_size,
-                        action_size=action_size).to(device)
+                        action_size=action_siz, 
+                        action_high=self.action_high).to(device)
+        
         if self.use_target_net:
             self.Critic1_target = Critic(state_size=state_size,
                                         hidden_size=self.hidden_size,
@@ -146,7 +150,8 @@ class TD3Agent(Agent):
                                         cross_q=self.cross_q).to(device)
             self.Actor_target = Actor(state_size=state_size,
                                     hidden_size=self.hidden_size,
-                                    action_size=action_size).to(device)
+                                    action_size=action_size,
+                                    action_high=self.action_high).to(device)
             # Set the target nets in eval
             self.Critic1_target.eval()
             self.Critic2_target.eval()
@@ -180,11 +185,12 @@ class TD3Agent(Agent):
             
         with torch.no_grad():
             #Exploration noise
-            noise = torch.from_numpy(self.noise.sample() * self.noise_factor)
+            noise = torch.normal(mean = 0, std = self.noise_factor)
+            #noise = torch.from_numpy(self.noise.sample() * self.noise_factor)
             
             #Forward pass for the Actor network and rescaling
             self.Actor.eval() #eval mode for batchnorm to compute running statistics
-            det_action = self.Actor(state) * self.action_scale + self.action_bias
+            det_action = self.Actor(state) 
             action = det_action + noise
             action = torch.clamp(
                 det_action + noise, 
@@ -206,7 +212,8 @@ class TD3Agent(Agent):
 
         # Exploration noise
         noise = torch.clamp(
-            torch.from_numpy(self.noise.sample() * self.noise_factor),
+            torch.normal(mean = 0, std = self.noise_factor),
+            #torch.from_numpy(self.noise.sample() * self.noise_factor),
             min = -self.noise_clip,
             max = self.noise_clip)
         
@@ -244,11 +251,11 @@ class TD3Agent(Agent):
         
         else:
             # 1. Next action via the target Actor network
-            next_action = self.Actor_target(next_state) * self.action_scale + self.action_bias
-            #next_action = torch.clamp(
-            #    next_action + noise,
-            #    min = self.action_low,          # Minimum action value
-            #    max = self.action_high).float()  # Maximum action value
+            prop_action = self.Actor_target(next_state) 
+            next_action = torch.clamp(
+                prop_action + noise,
+                min = self.action_low,
+                max = self.action_high).float()
             
             # 2. Forward pass for both Q networks
             q_prime1 = self.Critic1_target(next_state, next_action)
@@ -321,10 +328,6 @@ class TD3Agent(Agent):
         if episode_i % self.target_net_update_freq == 0 and self.use_target_net:
             self._copy_nets()
         
-        sum_up_stats = {
-            "Critic_Loss": sum([l[0] for l in losses]) / len(losses),
-            "Policy_Loss": sum([l[1] for l in losses]) / len(losses)
-        }
         avg_losses = np.mean(losses, axis=0).tolist()
         return avg_losses
 

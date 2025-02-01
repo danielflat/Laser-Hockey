@@ -170,9 +170,12 @@ def plot_sac_validation_metrics(
 def plot_mpo_training_metrics(
     critic_losses: List[float],
     actor_losses: List[float],
-    kl_µ: List[float],
-    kl_Σ: List[float],
-    opponent_metrics: List[dict]
+    kl: List[float],# Discrete
+    kl_µ: List[float],# Continuous
+    kl_Σ: List[float],# Continuous
+    opponent_metrics: List[dict],
+    discrete: bool,
+    save: bool 
 ):
     
     # Step 01: Clear the current figure
@@ -181,8 +184,8 @@ def plot_mpo_training_metrics(
     # Step 04: Plot critic loss
     plt.subplot(2, 2, 1)
     plt.plot(np.arange(1, len(critic_losses) + 1), critic_losses, marker='o', label='Critic Loss', color='orange')
-    plt.title("Critic Loss per Update")
-    plt.xlabel("Update")
+    plt.title("Critic Loss")
+    plt.xlabel("Episode")
     plt.ylabel("Critic Loss")
     plt.legend(prop={'size': 5})
     plt.grid()
@@ -190,19 +193,22 @@ def plot_mpo_training_metrics(
     # Step 05: Plot actor loss
     plt.subplot(2, 2, 2)
     plt.plot(np.arange(1, len(actor_losses) + 1), actor_losses, marker='o', label='Actor Loss', color='green')
-    plt.title("Actor Loss per Update")
-    plt.xlabel("Update")
+    plt.title("Actor Loss")
+    plt.xlabel("Episode")
     plt.ylabel("Actor Loss")
     plt.legend(prop={'size': 5})
     plt.grid()
 
     # Step 06: Plot KL Lagrange Multiplier
     plt.subplot(2, 2, 3)
-    plt.plot(np.arange(1, len(kl_µ) + 1), kl_µ, marker='o', label='KL µ', color='purple')
-    plt.plot(np.arange(1, len(kl_Σ) + 1), kl_Σ, marker='o', label='KL Σ', color='red')
-    plt.title("Lagrangian Multiplier per Update")
-    plt.xlabel("Update")
-    plt.ylabel("KL Value")
+    if discrete:
+        plt.plot(np.arange(1, len(kl) + 1), kl, marker='o', label='KL', color='blue')
+    else:
+        plt.plot(np.arange(1, len(kl_µ) + 1), kl_µ, marker='o', label='KL µ', color='purple')
+        plt.plot(np.arange(1, len(kl_Σ) + 1), kl_Σ, marker='o', label='KL Σ', color='red')
+    plt.title("KL_D(π||π_target)")
+    plt.xlabel("Episode")
+    plt.ylabel("Value")
     plt.legend(prop={'size': 5})
     plt.grid()
 
@@ -221,7 +227,7 @@ def plot_mpo_training_metrics(
             label=f"{opp}",
         )
         
-    plt.title("Win Rate per Validation")
+    plt.title("Win Rate")
     plt.xlabel("Validation")
     plt.ylabel("Win Rate")
     plt.legend(prop={'size': 5})
@@ -231,3 +237,6 @@ def plot_mpo_training_metrics(
 
     # Step 09: Pause to refresh the plot
     plt.pause(1)
+    
+    if save:
+        plt.savefig("mpo_training_metrics.png")

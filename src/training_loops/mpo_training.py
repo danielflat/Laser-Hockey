@@ -26,18 +26,19 @@ from src.util.plotutil import plot_training_metrics, plot_mpo_training_metrics
 
 def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, self_opponent = Agent):
     """
-    Training function for MPO agent in hockey environment
+    Training function for MPO agent in the hockey environment
     
     Author: Andre Pfrommer
     """
     
-    logging.info("Starting MPO training!")
+    logging.info("Starting MPO Hockey training!")
 
     all_rewards       = []
     all_wins          = []
     all_steps         = []
     all_critic_losses = []
     all_actor_losses  = []
+    all_kl            = []
     all_kl_µ          = []
     all_kl_Σ          = []
     
@@ -45,10 +46,13 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
 
     total_steps = 0
     total_episodes = 0
-    one_starting = True
+    save = False
 
     for i_episode in range(1, NUM_TRAINING_EPISODES + 1):
-        t_start = time.time()
+        
+        # Define some variables
+        if i_episode == NUM_TRAINING_EPISODES:
+            save = True
         total_reward = 0
         total_episodes += 1
         
@@ -77,7 +81,6 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             # Agent and opponent act
             action_agent = agent.act(state) #Numpy array
             action_opp = opponent.act(state_opponent) #Numpy array
-
             
             if DISCRETE:
                 # Convert to continuous action space 
@@ -90,17 +93,6 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
                 
             next_state_opp = env.obs_agent_two()
             done = terminated or truncated
-            
-            # Some reward adjustments
-            #if info["winner"] == 0:
-            #    reward = -5
-            #elif info["winner"] == -1:
-            #    reward = -10
-            #elif info["winner"] == 0 and done:
-            #    reward = -5
-            #else:
-            #if one_starting == False:
-            #    reward = -0.1
             
             # Tracking rewards
             total_reward += reward
@@ -139,17 +131,29 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             losses = agent.optimize(memory, episode_i=total_episodes)
             
             # And we log the losses in the episode
-            logging.info(
-                f"[Episode {i_episode}/{NUM_TRAINING_EPISODES}] Steps={step}, Opponent={opponent_name}, "
-                f"Reward={total_reward:.2f}, WinRate={win_rate:.2f}, "
-                f"CriticLoss={losses[0]:.3f}, ActorLoss={losses[1]:.3f}, "
-                f"KL_µ={losses[2]:.3f}, KL_Σ={losses[3]:.3f}"
-            )
-            # Saving these losses and lagrangians
-            all_critic_losses.append(losses[0])
-            all_actor_losses.append(losses[1])
-            all_kl_µ.append(losses[2])
-            all_kl_Σ.append(losses[3])
+            if DISCRETE:
+                logging.info(
+                    f"[Episode {i_episode}/{NUM_TRAINING_EPISODES}] Steps={step}, Opponent={opponent_name}, "
+                        f"Reward={total_reward:.2f}, WinRate={win_rate:.2f}, "
+                        f"CriticLoss={losses[0]:.3f}, ActorLoss={losses[1]:.3f}, "
+                        f"KL-D={losses[2]:.3f}"
+                    )
+                # Saving these losses and lagrangians
+                all_critic_losses.append(losses[0])
+                all_actor_losses.append(losses[1])
+                all_kl.append(losses[2])
+            else:
+                logging.info(
+                    f"[Episode {i_episode}/{NUM_TRAINING_EPISODES}] Steps={step}, Opponent={opponent_name}, "
+                    f"Reward={total_reward:.2f}, WinRate={win_rate:.2f}, "
+                    f"CriticLoss={losses[0]:.3f}, ActorLoss={losses[1]:.3f}, "
+                    f"KL-D Mean={losses[2]:.3f}, KL-D Var={losses[3]:.3f}"
+                )
+                # Saving these losses and lagrangians
+                all_critic_losses.append(losses[0])
+                all_actor_losses.append(losses[1])
+                all_kl_µ.append(losses[2])
+                all_kl_Σ.append(losses[3])
         
         # Update the self-opponent with the current agent weights
         if SELF_PLAY and i_episode % SELF_PLAY_UPDATE_FREQUENCY == 0:
@@ -162,7 +166,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             assert CHECKPOINT_ITER % EPISODE_UPDATE_ITER == 0, "Checkpointing freq should be larger than update freq!"
             
             # Validation
-            opponent_metrics = validate_mpo_hockey(agent, val_env, opponent_pool, num_episodes=1000, 
+            opponent_metrics = validate_mpo_hockey(agent, val_env, opponent_pool, num_episodes=500, 
                                                    seed_offset=SEED + total_episodes)
             val_opponent_metrics.append(opponent_metrics)
             
@@ -173,8 +177,8 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
         if SHOW_PLOTS and (i_episode) % PLOT_FREQUENCY == 0 and (len(memory) >= 100 * BATCH_SIZE):
             assert PLOT_FREQUENCY >= CHECKPOINT_ITER, "Plotting freq should be larger than checkpointing freq!"
             assert PLOT_FREQUENCY >= EPISODE_UPDATE_ITER, "Plotting freq should be larger than update freq!"
-            
-            plot_mpo_training_metrics(all_critic_losses, all_actor_losses, all_kl_µ, all_kl_Σ, val_opponent_metrics)
+            plot_mpo_training_metrics(all_critic_losses, all_actor_losses, all_kl, all_kl_µ, all_kl_Σ, val_opponent_metrics, 
+                                      discrete=DISCRETE, save=save)
 
     logging.info("Finished MPO training!")
     
@@ -190,6 +194,9 @@ def validate_mpo_hockey(agent, val_env, opponent_pool: dict, num_episodes: int, 
         opponent_name: {"wins": 0, "draws": 0, "losses": 0, "rewards": []}
         for opponent_name in opponent_pool.keys()
     }
+    
+    # Set the agent into eval mode
+    agent.setMode(eval=True)
 
     # Play num_episodes against each opponent
     for opponent_name, opponent in opponent_pool.items():
