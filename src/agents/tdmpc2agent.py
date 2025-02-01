@@ -226,12 +226,7 @@ class TDMPC2Agent(Agent, nn.Module):
 
         During training, we add noise to the proposed action.
         """
-        proposed_action = self._plan(state, is_training = self.isEval)
-        # TODO: df: Should we really noise it? Unclear yet!
-        if not self.isEval:
-            noise = self.noise_factor * self.noise.sample()
-            proposed_action += noise
-            proposed_action = np.clip(proposed_action, self.min_action, self.max_action)
+        proposed_action = self._plan(state)
 
         return proposed_action
 
@@ -316,13 +311,12 @@ class TDMPC2Agent(Agent, nn.Module):
 
     # TODO
     @torch.no_grad()
-    def _plan(self, state: torch.Tensor, is_training: bool) -> np.ndarray:
+    def _plan(self, state: torch.Tensor) -> np.ndarray:
         """
         Plan proposed_action sequence of action_sequence_samples using the learned world model.
 
         Args:
             state (torch.Tensor): Real state from which to plan in the future.
-            is_training (bool): Whether to use the mean of the action distribution or not. if true, we sample, if not, we take the mean.
 
         Returns:
             torch.Tensor: Action to take in the environment at the current timestep.
@@ -377,7 +371,7 @@ class TDMPC2Agent(Agent, nn.Module):
         self._prior_mean = copy.deepcopy(mean[1:])
 
         # in training mode, we add some noise
-        if is_training:
+        if not self.isEval:
             # planned_action = planned_action + std * torch.randn(self.action_size, device = self.device)   # adding some noise based on the std.
             planned_action = planned_action + self.noise_factor * self.noise.sample()  # using pink noise
         return planned_action.clamp(self.min_action_torch, self.max_action_torch).cpu().numpy()
