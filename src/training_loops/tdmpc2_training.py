@@ -330,7 +330,7 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
                 added_opponent_extra_info = ""
 
             # we update the self_opponent
-            self_opponent = copy.deepcopy(agent)
+            self_opponent.import_checkpoint(agent.export_checkpoint())
             logging.info(
                 f"Training Iter: {i_training} | Updated self-opponent to {USE_ALGO}_{i_training}{added_opponent_extra_info}!")
 
