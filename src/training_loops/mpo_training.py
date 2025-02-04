@@ -3,8 +3,7 @@ import numpy as np
 
 import random
 from itertools import count
-
-import time
+import copy
 import torch
 
 from src.agent import Agent
@@ -15,13 +14,13 @@ from src.settings import AGENT_SETTINGS, BATTLE_STATISTICS_FREQUENCY, CHECKPOINT
     MODEL_NAME, MPO_SETTINGS, \
     NUM_TRAINING_EPISODES, PLOT_FREQUENCY, PPO_SETTINGS, \
     RENDER_MODE, SAC_SETTINGS, \
-    SEED, SELF_PLAY, SELF_PLAY_FREQUENCY, SELF_PLAY_UPDATE_FREQUENCY, SETTINGS, \
+    SEED, SELF_PLAY, SELF_PLAY_FREQUENCY, SELF_PLAY_UPDATE_FREQUENCY, SELF_PLAY_KEEP_AGENT_FREQUENCY, SETTINGS, \
     SHOW_PLOTS, TD3_SETTINGS, TD_MPC2_SETTINGS, USE_ALGO, \
     CURIOSITY, BATCH_SIZE, EPISODE_UPDATE_ITER, MODEL_NAME, NUM_TRAINING_EPISODES, DISCRETE, RENDER_MODE, SEED
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
     TD3_ALGO, TDMPC2_ALGO, WEAK_COMP_ALGO, MPO_ALGO
 from src.util.contract import initAgent, initEnv, initValEnv, initSeed, setupLogging
-from src.util.plotutil import plot_training_metrics, plot_mpo_training_metrics
+from src.util.plotutil import plot_training_metrics, plot_mpo_training_metrics, plot_mpo_intrinsic_rewards
 
 
 def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, self_opponent = Agent):
@@ -33,16 +32,17 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
     
     logging.info("Starting MPO Hockey training!")
 
-    all_rewards       = []
-    all_wins          = []
-    all_steps         = []
-    all_critic_losses = []
-    all_actor_losses  = []
-    all_kl            = []
-    all_kl_µ          = []
-    all_kl_Σ          = []
+    all_rewards           = []
+    all_intrinsic_rewards = []
+    all_wins              = []
+    all_steps             = []
+    all_critic_losses     = []
+    all_actor_losses      = []
+    all_kl                = []
+    all_kl_µ              = []
+    all_kl_Σ              = []
     
-    val_opponent_metrics = []  #Storing opponent metrics gained from validation fkt
+    val_opponent_metrics = []  
 
     total_steps = 0
     total_episodes = 0
@@ -51,9 +51,10 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
     for i_episode in range(1, NUM_TRAINING_EPISODES + 1):
         
         # Define some variables
-        if i_episode == NUM_TRAINING_EPISODES:
+        if i_episode % 10_000 == 0  or i_episode == NUM_TRAINING_EPISODES:
             save = True
         total_reward = 0
+        total_intrinsic_reward = 0
         total_episodes += 1
         
         # Select self opponent 
@@ -82,7 +83,10 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             action_agent = agent.act(state) #Numpy array
             action_opp = opponent.act(state_opponent) #Numpy array
             
-            if DISCRETE:
+            if isinstance(action_opp, int): # We have a discrete opp action
+                action_opp = env.discrete_to_continous_action(action_opp)
+            
+            if isinstance(action_agent, int): # We have a discrete agent action
                 # Convert to continuous action space 
                 action_agent_cont = env.discrete_to_continous_action(action_agent)
                 # Step in the env
@@ -107,6 +111,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             if CURIOSITY is not None:
                 intrinsic_reward = agent.icm.compute_intrinsic_reward(state, next_state, action_agent)
                 reward = reward + CURIOSITY * intrinsic_reward
+                total_intrinsic_reward += intrinsic_reward.detach().cpu().numpy()
 
             # Store transitions in replay buffer
             memory.push(state, action_agent, reward, next_state, done, info)
@@ -121,6 +126,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
         
         # Saving statistics
         all_rewards.append(total_reward)
+        all_intrinsic_rewards.append(total_intrinsic_reward)
         all_steps.append(step)
         winner = (info["winner"] == 1)
         all_wins.append(1 if winner else 0)
@@ -160,6 +166,10 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             self_opponent.import_checkpoint(agent.export_checkpoint())
             logging.info(f"Self-opponent updated with agent weights at episode {i_episode}")
             
+            # Adding the self-opponent to the opponent pool
+            if i_episode % SELF_PLAY_KEEP_AGENT_FREQUENCY == 0:
+                opponent_pool[f"{USE_ALGO}_{i_episode}"] = copy.deepcopy(self_opponent)
+                logging.info(f"Self-opponent added to the opponent pool at episode {i_episode}")            
         
         # Validation and checkpointing 
         if (i_episode) % (CHECKPOINT_ITER) == 0 and (len(memory) >= 100 * BATCH_SIZE):
@@ -177,13 +187,15 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
         if SHOW_PLOTS and (i_episode) % PLOT_FREQUENCY == 0 and (len(memory) >= 100 * BATCH_SIZE):
             assert PLOT_FREQUENCY >= CHECKPOINT_ITER, "Plotting freq should be larger than checkpointing freq!"
             assert PLOT_FREQUENCY >= EPISODE_UPDATE_ITER, "Plotting freq should be larger than update freq!"
-            plot_mpo_training_metrics(all_critic_losses, all_actor_losses, all_kl, all_kl_µ, all_kl_Σ, val_opponent_metrics, 
-                                      discrete=DISCRETE, save=save)
+            plot_mpo_training_metrics(all_critic_losses, all_actor_losses, 
+                                      all_kl, all_kl_µ, all_kl_Σ, val_opponent_metrics, discrete=DISCRETE, save=save)
+            if CURIOSITY is not None:
+                plot_mpo_intrinsic_rewards(all_rewards, all_intrinsic_rewards, save=save)
 
     logging.info("Finished MPO training!")
     
     # Returning all the stats if desired
-    return all_rewards, all_wins, all_critic_losses, all_actor_losses, all_kl_µ, all_kl_Σ, val_opponent_metrics
+    return all_rewards, all_intrinsic_rewards, all_wins, all_critic_losses, all_actor_losses, all_kl_µ, all_kl_Σ, val_opponent_metrics
 
 def validate_mpo_hockey(agent, val_env, opponent_pool: dict, num_episodes: int, seed_offset: int = 0):
     """
@@ -217,7 +229,10 @@ def validate_mpo_hockey(agent, val_env, opponent_pool: dict, num_episodes: int, 
                 action = agent.act(state)
                 opponent_action = opponent.act(state_opp)
                 
-                if DISCRETE:
+                if isinstance(opponent_action, int):
+                    opponent_action = val_env.discrete_to_continous_action(opponent_action)
+                
+                if isinstance(action, int):
                     action = val_env.discrete_to_continous_action(action)
 
                 # Step the environment
@@ -225,7 +240,7 @@ def validate_mpo_hockey(agent, val_env, opponent_pool: dict, num_episodes: int, 
                 next_state_opp = val_env.obs_agent_two()
                 done = terminated or truncated
                 
-                #tracking rewards
+                # Tracking rewards
                 episode_reward += reward
                 
                 next_state = torch.tensor(next_state, device = DEVICE, dtype = torch.float32)

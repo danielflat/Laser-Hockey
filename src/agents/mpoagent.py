@@ -41,7 +41,7 @@ class Actor(nn.Module):
             self.action_low = torch.tensor(action_space.low, device=self.device)[:self.da]
             self.action_high = torch.tensor(action_space.high, device=self.device)[:self.da]
         else:
-            self.da = 7 # The action size for the Hockey env
+            self.da = action_size 
             
         #Feedforward network
         self.net = nn.Sequential(
@@ -146,7 +146,7 @@ class Critic(nn.Module):
         if self.continuous:
             self.da = action_size
         else:
-            self.da = 7 #action_space.n
+            self.da = action_size 
             
         if self.continuous:
             self.net = nn.Sequential(
@@ -200,13 +200,12 @@ class MPOAgent(Agent):
     https://github.com/daisatojp/mpo/blob/master/mpo/mpo.py
     
     Parameters specific to the MPO agent:
-    
+    :param discrete:
+        (bool) whether the action space is discrete or continuous
     :param hidden_dim: 
         (int) hidden layer dimension
     :param sample_action_num: 
         (int) number of actions to sample per state (N), irrelevant for discrete action spaces
-    :param mstep_iteration_num:
-        (int) the number of iterations of the M-step. Lets keep this to 1 first
     :param dual_constraint:
         (float) hard constraint of the dual formulation in the E-step
     :param kl_constraint:
@@ -220,25 +219,16 @@ class MPOAgent(Agent):
     def __init__(self, agent_settings, device, state_space, action_space, mpo_settings):
         super().__init__(agent_settings, device)
         
-        #Continous or discrete action space
-        self.continuous = True
-        if mpo_settings.get("DISCRETE"):
-            self.continuous = False
-        
         self.device = device
         self.action_space = action_space
-        self.action_size = self.get_num_actions(action_space)
         self.state_space = state_space
         
-        self.ds = self.state_space.shape[0]
-        if self.continuous:
-            self.da = self.get_num_actions(action_space)
-            self.action_low = torch.tensor(action_space.low, device=self.device)[:self.da]
-            self.action_high = torch.tensor(action_space.high, device=self.device)[:self.da]
-        else:
-            self.da = 7 #action_space.n
-        
+        # Get the MPO settings
+        self.continuous = not mpo_settings.get("DISCRETE", False)
+        self.number_disc_actions = mpo_settings.get("NUMBER_DISCRETE_ACTIONS", 7)
+        # NOTE: We need 7 actions in the discrete hockey environment
         self.hidden_dim = mpo_settings.get("HIDDEN_DIM", 256)  
+        self.curiosity = mpo_settings.get("CURIOSITY", None)
         self.sample_action_num = mpo_settings.get("SAMPLE_ACTION_NUM", 64) #N
         self.kl_constraint_scalar = mpo_settings.get("KL_CONSTRAINT_SCALAR", 0.1)
         self.ε_dual = mpo_settings.get("DUAL_CONSTAINT", 0.1) 
@@ -246,19 +236,27 @@ class MPOAgent(Agent):
         self.ε_kl_μ = mpo_settings.get("KL_CONSTRAINT_MEAN", 0.01) 
         self.ε_kl_Σ = mpo_settings.get("KL_CONSTRAINT_VAR", 0.0001) 
         
+        # Get state and action dimensions
+        self.ds = self.state_space.shape[0]
+        if self.continuous:
+            self.da = self.get_num_actions(action_space)
+            self.action_low = torch.tensor(action_space.low, device=self.device)[:self.da]
+            self.action_high = torch.tensor(action_space.high, device=self.device)[:self.da]
+        else:
+            self.da = self.number_disc_actions 
         
-        #initialize variables to optimize
+        
+        # Initialize variables to optimize
         self.η = np.random.rand() #E step, dual variable
         self.η_kl = 0.0
         self.η_µ_kl = 0.0
         self.η_Σ_kl = 0.0 
 
-
-        #Set up the actor and critic networks
-        self.actor = Actor(state_space, action_space, self.action_size, self.hidden_dim, self.continuous, self.device).to(self.device)
-        self.critic = Critic(state_space, action_space, self.action_size, self.hidden_dim, self.continuous).to(self.device)
-        self.target_actor = Actor(state_space, action_space, self.action_size, self.hidden_dim, self.continuous, self.device).to(self.device)
-        self.target_critic = Critic(state_space, action_space, self.action_size, self.hidden_dim, self.continuous).to(self.device)
+        # Set up the actor and critic networks
+        self.actor = Actor(state_space, action_space, self.da, self.hidden_dim, self.continuous, self.device).to(self.device)
+        self.critic = Critic(state_space, action_space, self.da, self.hidden_dim, self.continuous).to(self.device)
+        self.target_actor = Actor(state_space, action_space, self.da, self.hidden_dim, self.continuous, self.device).to(self.device)
+        self.target_critic = Critic(state_space, action_space, self.da, self.hidden_dim, self.continuous).to(self.device)
         self.target_actor.load_state_dict(self.actor.state_dict())
         self.target_critic.load_state_dict(self.critic.state_dict())
         
@@ -268,11 +266,12 @@ class MPOAgent(Agent):
         self.critic_optimizer = self.initOptim(optim = mpo_settings["CRITIC"]["OPTIMIZER"],
                                            parameters = self.critic.parameters())
 
-        #Define Loss function
+        # Define Loss function
         self.criterion = self.initLossFunction(loss_name = mpo_settings["CRITIC"]["LOSS_FUNCTION"])
         
-        #Initialize intrinsic curiosity module 
-        # self.icm = ICM(self.ds, self.da, 1 - self.continuous)
+        # Initialize intrinsic curiosity module 
+        if self.curiosity is not None:
+            self.icm = ICM(self.ds, self.da, 1 - self.continuous, device)
         
     def __repr__(self):
         """
@@ -283,10 +282,8 @@ class MPOAgent(Agent):
     def act(self, state: torch.Tensor):
         """
         Selects an action based on the current policy and evaluation mode. 
-        :param state:
-            (B, ds) the current state
-        :return:
-            action: (B, da) the action
+        :param state: (B, ds) the current state
+        :return: action: (B, da) the action
         """
         with torch.no_grad():
             if self.continuous:
@@ -381,28 +378,24 @@ class MPOAgent(Agent):
         Find the action weights qij by applying two value constraints in a nonparametric way:
         1. Keep qij close to the target q values. The distribution of qij can computed in closed form by minimizing the dual function
         2. Apply softmax over all actions to normalize q values
-        :param q_target:
-            (K, da) or (K, N) the target q values
-        :param π_target_np:
-            (K, da) the target policy probabilities, only used in the discrete case
+        :param q_target: (K, da) or (K, N) the target q values
+        :param π_target_np: (K, da) the target policy probabilities, only used in the discrete case
+        :return: (K, da) or (K, N) the action weights qij
         """
         q_target_np = q_target.cpu().numpy()
-        if not self.continuous:
-            π_target_np = π_target.cpu().numpy() 
+        π_target_np = π_target.cpu().numpy() if not self.continuous else None
             
         def dual(η):
             """
             Dual function for MPO with numerical stabilization.
             
-            dual function of the non-parametric variational
-            g(η) = η*ε + η*mean(log(x)) where
-            x = mean(exp(Q(s, a)/η))
-            This equation is correspond to last equation of the [2] p.15
-            For numerical stabilization, this can be modified to
-            Qj = max(Q(s, a), along=a)
+            dual function of the non-parametric variational:
+            g(η) = η*ε + η*mean(log(x)) where x = mean(exp(Q(s, a)/η))
+            This equation corresponds to last equation of the [2] p.15 
+            with some adjustments for numerical stability.
             
-            I got this function from p.4 of the paper and the Github
-            https://github.com/daisatojp/mpo/blob/master/mpo/mpo.py
+            :param η: Dual variable for constraint optimization.
+            :return: Optimized dual function value.
             """
             # Max Q-value per state
             max_q = np.max(q_target_np, axis=1) 
@@ -446,6 +439,7 @@ class MPOAgent(Agent):
         K = self.batch_size
         
         with torch.no_grad():
+            ################# Continuous evaluation ##################
             if self.continuous:
                 # 1. We first get the mean and covariance of the target policy
                 b_μ, b_A = self.target_actor(states) # (K,) K batch size
@@ -462,7 +456,7 @@ class MPOAgent(Agent):
                 qij = self.find_qij_dist(target_q.transpose(0, 1), None) # (K, N) 
                 
                 return sampled_actions, qij, b_μ, b_A
-                
+            ################## Discrete evaluation ####################
             else:
                 # 1. Here we also get the policy output first, but again we dont sample 
                 b, _ = self.target_actor(states) # (K, da)
@@ -496,7 +490,7 @@ class MPOAgent(Agent):
         """
         N = self.sample_action_num
         K = self.batch_size
-        
+        ################# Continuous maximization ##################
         if self.continuous:
             # 1. Mean and covariance of the current policy
             μ, A = self.actor(states) # (K,)
@@ -538,7 +532,7 @@ class MPOAgent(Agent):
                 )
             
             return loss_actor, kl_μ.detach(), kl_Σ.detach()
-                
+        ################## Discrete maximization ##################
         else:
             # Creates action tensor of shape (da, K), where each of the K rows contains repeated indices ranging from 0 to self.da - 1
             actions = torch.arange(self.da).unsqueeze(1).expand(self.da, K).to(self.device)  # (da, K)
@@ -562,7 +556,7 @@ class MPOAgent(Agent):
             if self.kl_constraint_scalar is None:
                 loss_actor = -(loss_MLE + self.η_kl * (self.ε_kl - kl))
             else:
-                #Use the given scalar
+                # Use the given scalar
                 loss_actor = -loss_MLE + self.kl_constraint_scalar * (self.ε_kl - kl)
             
             return loss_actor, kl.detach(), None
@@ -580,16 +574,17 @@ class MPOAgent(Agent):
         """
         losses = []
         
-        #Nr of actions to sample per state, irrelevant for discrete action spacessince we select all da actions per state
+        # Nr of actions to sample per state, irrelevant for discrete action spacessince we select all da actions per state
         N = self.sample_action_num 
-        #Nr of sampled states, here the Batch size
+        # Nr of sampled states, here the Batch size
         K = self.batch_size  
         for _ in range(self.opt_iter):
             # Sample from replay buffer, dimensions (K, ds), (K, da), (K,), (K, ds) 
             states, actions, rewards, next_states, dones, info = memory.sample(batch_size=self.batch_size, randomly=True)
             
             # Train the curiosity module 
-            #self.icm.train(states, next_states, actions)
+            if self.curiosity is not None:
+                self.icm.train(states, next_states, actions)
             
             # 1: Policy Evaluation: Update Critic (Q-function)
             loss_critic, q_estimates = self.critic_update(states, actions, dones, next_states, rewards, N)
@@ -622,7 +617,7 @@ class MPOAgent(Agent):
                                          foreach = self.use_clip_foreach)
             self.actor_optimizer.step()
             
-            # Keep track of the losses
+            # Keeping track of the losses and KL divergencies
             if self.continuous:
                 losses.append([loss_critic.item(), loss_actor.item(), kl_µ.item(), kl_Σ.item()])
             else:
@@ -651,34 +646,6 @@ class MPOAgent(Agent):
             self.actor.train()
             self.critic.train()
     
-    def saveModel(self, model_name: str, iteration: int) -> None:
-        """
-        Saves the model parameters of the agent.
-        """
-        checkpoint = self.export_checkpoint()
-
-        directory = get_path(f"output/checkpoints/{model_name}")
-        file_path = os.path.join(directory, f"{model_name}_{iteration:05}.pth")
-
-        # Ensure the directory exists
-        os.makedirs(directory, exist_ok = True)
-
-        torch.save(checkpoint, file_path)
-        logging.info(f"Iteration: {iteration} MPO checkpoint saved successfully!")
-        
-    def loadModel(self, file_name: str) -> None:
-        """
-        Loads the model parameters of the agent.
-        """
-        try:
-            checkpoint = torch.load(file_name, map_location=self.device)
-            self.import_checkpoint(checkpoint)
-            logging.info(f"Model loaded successfully from {file_name}")
-        except FileNotFoundError:
-            logging.error(f"Error: File {file_name} not found.")
-        except Exception as e:
-            logging.error(f"An error occurred while loading the model: {str(e)}")
-
     def _copy_nets(self) -> None:
         assert self.use_target_net == True
         # Step 01: Copy the actor net

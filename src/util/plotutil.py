@@ -178,41 +178,42 @@ def plot_mpo_training_metrics(
     save: bool 
 ):
     
-    # Step 01: Clear the current figure
-    plt.clf()
+    # Clear the current figure and set size
+    fig = plt.figure(1, figsize=(6, 5))
+    fig.clf()
 
-    # Step 04: Plot critic loss
+    # Plot critic loss
     plt.subplot(2, 2, 1)
     plt.plot(np.arange(1, len(critic_losses) + 1), critic_losses, marker='o', label='Critic Loss', color='orange')
     plt.title("Critic Loss")
     plt.xlabel("Episode")
     plt.ylabel("Critic Loss")
-    plt.legend(prop={'size': 5})
+    plt.legend(prop={'size': 6})
     plt.grid()
 
-    # Step 05: Plot actor loss
+    # Plot actor loss
     plt.subplot(2, 2, 2)
     plt.plot(np.arange(1, len(actor_losses) + 1), actor_losses, marker='o', label='Actor Loss', color='green')
     plt.title("Actor Loss")
     plt.xlabel("Episode")
     plt.ylabel("Actor Loss")
-    plt.legend(prop={'size': 5})
+    plt.legend(prop={'size': 6})
     plt.grid()
 
-    # Step 06: Plot KL Lagrange Multiplier
+    # Plot KL Divergence
     plt.subplot(2, 2, 3)
     if discrete:
         plt.plot(np.arange(1, len(kl) + 1), kl, marker='o', label='KL', color='blue')
     else:
         plt.plot(np.arange(1, len(kl_µ) + 1), kl_µ, marker='o', label='KL µ', color='purple')
         plt.plot(np.arange(1, len(kl_Σ) + 1), kl_Σ, marker='o', label='KL Σ', color='red')
-    plt.title("KL_D(π||π_target)")
+    plt.title("$KL_D(\pi||\pi_{{target}})$")
     plt.xlabel("Episode")
-    plt.ylabel("Value")
-    plt.legend(prop={'size': 5})
+    plt.ylabel("$KL_D$")
+    plt.legend(prop={'size': 6})
     plt.grid()
 
-    # Step 07: Plot opponent metrics
+    # Plot opponent metrics
     plt.subplot(2, 2, 4)
     opponent_names = list(opponent_metrics[0].keys())
     for opp in opponent_names:
@@ -230,13 +231,48 @@ def plot_mpo_training_metrics(
     plt.title("Win Rate")
     plt.xlabel("Validation")
     plt.ylabel("Win Rate")
-    plt.legend(prop={'size': 5})
+    plt.legend(prop={'size': 6})
     plt.grid()
     
     plt.tight_layout()
 
-    # Step 09: Pause to refresh the plot
+    # Pause to refresh the plot
     plt.pause(1)
     
     if save:
-        plt.savefig("mpo_training_metrics.png")
+        plt.savefig("mpo_training_metrics.pdf")
+
+def plot_mpo_intrinsic_rewards(
+    rewards : List[float],
+    intrinsic_rewards : List[float],
+    save: bool
+):
+    # Clear the current figure and set size
+    fig = plt.figure(2, figsize=(6, 3))
+    fig.clf()
+    
+    # Plot the rewards
+    plt.subplot(1, 2, 1)
+    plt.plot(np.arange(1, len(rewards) + 1), rewards, marker='o', label='Rewards', color='blue')
+    plt.title("True Rewards")
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.legend(prop={'size': 6})
+    plt.grid()
+    
+    # Plot the intrinsic rewards
+    plt.subplot(1, 2, 2)
+    plt.plot(np.arange(1, len(intrinsic_rewards) + 1), intrinsic_rewards, marker='o', label='Intrinsic Rewards', color='green')
+    plt.title("Intrinsic Rewards")
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.legend(prop={'size': 6})
+    plt.grid()
+    
+    plt.tight_layout()
+    
+    plt.pause(1)
+    
+    if save:
+        plt.savefig("intrinsic_rewards.pdf")
+    
