@@ -373,7 +373,8 @@ class TDMPC2Agent(Agent, nn.Module):
         # in training mode, we add some noise
         if not self.isEval:
             # planned_action = planned_action + std * torch.randn(self.action_size, device = self.device)   # adding some noise based on the std.
-            planned_action = planned_action + self.noise_factor * self.noise.sample()  # using pink noise
+            planned_action = planned_action + self.noise_factor * torch.tensor(self.noise.sample(), dtype=torch.float32,
+                                                                               device=self.device)  # using pink noise
         return planned_action.clamp(self.min_action_torch, self.max_action_torch).cpu().numpy()
 
     def _update(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,

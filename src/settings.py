@@ -42,7 +42,7 @@ SETTINGS = {
 
         # Environment settings
         "USE_ENV": HOCKEY,  # The used environment
-        "PROXY_REWARDS": False,  # If the agent should get proxy rewards (works only with HOCKEY)
+        "PROXY_REWARDS": True,  # If the agent should get proxy rewards (works only with HOCKEY)
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
@@ -65,7 +65,7 @@ SETTINGS = {
 
         # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
         # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
-        "CHECKPOINT_NAME": None,
+        "CHECKPOINT_NAME": get_path("good_checkpoints/25-01-25 14_24_21_000174500.pth"),
         "CHECKPOINT_ITER": 500,  # saves a checkpoint of this model after x iterations
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints

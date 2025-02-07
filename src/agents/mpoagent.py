@@ -671,4 +671,4 @@ class MPOAgent(Agent):
         return checkpoint
 
     def reset(self):
-        raise NotImplementedError
+        pass
