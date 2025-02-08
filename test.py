@@ -109,11 +109,17 @@ def test():
                 state = torch.tensor(state, device = TEST_DEVICE, dtype = torch.float32)
 
             action1 = player1.act(state)
+            # Check if the action is discrete
+            if isinstance(action1, int) and TEST_USE_ENV == HOCKEY:
+                action1 = env.discrete_to_continous_action(action1)
             if TEST_USE_ENV == HOCKEY and isinstance(player2, Agent):
                 state2 = torch.tensor(state2, device = TEST_DEVICE, dtype = torch.float32)
 
             if TEST_USE_ENV == HOCKEY:
                 action2 = player2.act(state2)
+                # Check if the action is discrete
+                if isinstance(action2, int):
+                    action2 = env.discrete_to_continous_action(action2)
                 next_step, reward, terminated, truncated, info = env.step(np.hstack([action1, action2]))
             else:
                 next_step, reward, terminated, truncated, info = env.step(action1)

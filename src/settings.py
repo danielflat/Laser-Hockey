@@ -54,9 +54,7 @@ SETTINGS = {
         "NUM_TEST_EPISODES": 1_000,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
-        "CURIOSITY": None,
-        # Proportion of curiosity reward calculated by ICM to be added to the real reward. If None no curiosity exploration is used
-
+        
         # PLOTTING
         "SHOW_PLOTS": False,  # If you want to plot statistics after each episode
         "PLOT_FREQUENCY": 100,  # After how many episodes you want to refresh the plots
@@ -227,21 +225,17 @@ SETTINGS = {
             },
             "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
-        "LAGRANGIANS": {
-            "OPTIMIZER": {
-                "OPTIM_NAME": ADAM,
-                "LEARNING_RATE": 0.1,
-                "BETAS": (0.9, 0.999),
-                "EPS": 1e-8,
-                "WEIGHT_DECAY": 1e-4,
-                "USE_FUSION": torch.cuda.is_available()
-            },
-        },
+        "DISCRETE": True, # Whether or not to use disc AS
+        "CURIOSITY": None,
+        # Proportion of curiosity reward calculated by ICM to be added to the real reward. If None no curiosity exploration is used
         "SAMPLE_ACTION_NUM": 32,  # Number of actions to sample for nonparametric policy optimization
-        "MSTEP_ITER": 1,
-        "DISCRETE": False,
+        "KL_CONSTRAINT_SCALAR": 1, 
+        #Value of the scalar for the Kl Constraint. If None, we optimize it via gradient descent
+        "KL_CONSTRAINT_MEAN": 0.01, # Mean Kl Constraint for cont AS
+        "KL_CONSTRAINT_VAR": 0.0001, # Var Kl Constraint for cont AS
+        "KL_CONSTRAINT": 0.01, # Kl Constraint for disc AS
         # All other Hyperparameters are set in the MPO class
-        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the PPO Hockey agent?
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the MPO Hockey agent?
     },
     "TD_MPC2": {
         "OPTIMIZER": {
@@ -323,3 +317,7 @@ SAC_NUM_EPISODES_PER_TRAINING_EPOCH = SAC_SETTINGS["NUM_EPISODES_PER_TRAINING_EP
 SAC_NUM_EPISODES_PER_VALIDATION_EPOCH = SAC_SETTINGS["NUM_EPISODES_PER_VALIDATION_EPOCH"]
 SAC_VALIDATION_FREQ = SAC_SETTINGS["VALIDATION_FREQ"]
 SAC_TRAIN_FREQ = SAC_SETTINGS["TRAIN_FREQ"]
+
+#MPO Params
+DISCRETE = MPO_SETTINGS["DISCRETE"]
+CURIOSITY = MPO_SETTINGS["CURIOSITY"]
