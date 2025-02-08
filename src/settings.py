@@ -42,7 +42,7 @@ SETTINGS = {
 
         # Environment settings
         "USE_ENV": HOCKEY,  # The used environment
-        "PROXY_REWARDS": True,  # If the agent should get proxy rewards (works only with HOCKEY)
+        "PROXY_REWARDS": False,  # If the agent should get proxy rewards (works only with HOCKEY)
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set

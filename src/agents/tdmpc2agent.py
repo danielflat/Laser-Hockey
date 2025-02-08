@@ -361,7 +361,7 @@ class TDMPC2Agent(Agent, nn.Module):
             std = std.clamp(self.min_std, self.max_std)
 
         # Select action by sampling the one with the highest score w.r.t. gumbel noise perturbation
-        gumbel_noise = torch.distributions.Gumbel(0, 1).sample(score.shape)
+        gumbel_noise = torch.distributions.Gumbel(0, 1).sample(score.shape).to(self.device)
         noisy_scores = (score + gumbel_noise).squeeze()
         selected_index = torch.argmax(noisy_scores, dim = 0)
         planned_action_sequence = elite_actions[:, selected_index, :]

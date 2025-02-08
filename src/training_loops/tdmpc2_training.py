@@ -210,17 +210,17 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
             done = terminated or truncated
 
             # If the agent wins, we want to give a high reward
-            # if info["winner"] == 1:
-            #     reward += 90
-            # # If the agent loses, we want to give a high penalty
-            # elif info["winner"] == -1:
-            #     reward += -90
-            # # If the agent draws in the end, we want to give a medium penalty
-            # elif info["winner"] == 0 and done:
-            #     reward += -5
-            # # We want to penalize over the time to go and win *fast*, because the simulator only goes up to 251 steps.
-            # else:
-            #     reward += -0.01
+            if info["winner"] == 1:
+                reward += 90
+            # If the agent loses, we want to give a high penalty
+            elif info["winner"] == -1:
+                reward += -90
+            # If the agent draws in the end, we want to give a medium penalty
+            elif info["winner"] == 0 and done:
+                reward += -5
+            # We want to penalize over the time to go and win *fast*, because the simulator only goes up to 251 steps.
+            else:
+                reward += -0.01
 
             # track the total reward
             total_reward += reward
