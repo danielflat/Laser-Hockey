@@ -12,7 +12,6 @@ from torch.nn import functional as F
 from typing import Any, Dict
 
 from src.agent import Agent
-from comprl.client import Agent as Lecture_Agent
 from src.replaymemory import ReplayMemory
 from src.util import mathutil
 from src.util.layerutil import NormedLinear

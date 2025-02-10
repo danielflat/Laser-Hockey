@@ -9,11 +9,12 @@ from itertools import count
 
 from src.agent import Agent
 from src.replaymemory import ReplayMemory
-from src.settings import AGENT_SETTINGS, BATTLE_STATISTICS_FREQUENCY, CHECKPOINT_ITER, DDPG_SETTINGS, DEVICE, \
+from src.settings import AGENT_SETTINGS, APPLY_OWN_REWARD_FUNCTION, BATTLE_STATISTICS_FREQUENCY, CHECKPOINT_ITER, \
+    DDPG_SETTINGS, DEVICE, \
     DQN_SETTINGS, EPISODE_UPDATE_ITER, \
     MAIN_SETTINGS, \
     MODEL_NAME, MPO_SETTINGS, \
-    NUM_TRAINING_EPISODES, PLOT_FREQUENCY, PPO_SETTINGS, \
+    NUM_TRAINING_EPISODES, PLOT_FREQUENCY, POST_EDIT_REWARD, PPO_SETTINGS, \
     RENDER_MODE, SAC_SETTINGS, \
     SEED, SELF_PLAY, SELF_PLAY_FREQUENCY, SELF_PLAY_KEEP_AGENT_FREQUENCY, SELF_PLAY_UPDATE_FREQUENCY, SETTINGS, \
     SHOW_PLOTS, TD3_SETTINGS, TD_MPC2_SETTINGS, USE_ALGO, WEIGHTING_RULE
@@ -209,18 +210,19 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
             next_state_opponent = env.obs_agent_two()
             done = terminated or truncated
 
-            # If the agent wins, we want to give a high reward
-            if info["winner"] == 1:
-                reward = 10
-            # If the agent loses, we want to give a high penalty
-            elif info["winner"] == -1:
-                reward = -10
-            # If the agent draws in the end, we want to give a medium penalty
-            elif info["winner"] == 0 and done:
-                reward = -5
-            # We want to penalize over the time to go and win *fast*, because the simulator only goes up to 251 steps.
-            else:
-                reward = -0.01
+            if APPLY_OWN_REWARD_FUNCTION:
+                # If the agent wins, we want to give a high reward
+                if info["winner"] == 1:
+                    reward = 10
+                # If the agent loses, we want to give a high penalty
+                elif info["winner"] == -1:
+                    reward = -10
+                # If the agent draws in the end, we want to give a medium penalty
+                elif info["winner"] == 0 and done:
+                    reward = -5
+                # We want to penalize over the time to go and win *fast*, because the simulator only goes up to 251 steps.
+                # else:
+                #     reward = -0.01
 
             # track the total reward
             total_reward += reward
@@ -289,6 +291,11 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
         all_rewards = torch.stack(all_rewards, dim = 0)
         all_dones = torch.stack(all_dones, dim = 0)
         all_next_states = torch.stack(all_next_states, dim = 0)
+
+        if POST_EDIT_REWARD:
+            for i in range(all_rewards.shape[0]):
+                all_rewards[i] = all_rewards[-1] * (0.98 ** (250 - i))
+
         memory.push(all_states, all_actions, all_rewards, all_next_states, all_dones, all_infos)
 
         # After some episodes and collecting some data, we optimize the agent
