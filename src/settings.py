@@ -43,6 +43,8 @@ SETTINGS = {
         # Environment settings
         "USE_ENV": HOCKEY,  # The used environment
         "PROXY_REWARDS": False,  # If the agent should get proxy rewards (works only with HOCKEY)
+        "APPLY_OWN_REWARD_FUNCTION": True,  # whether to apply your own reward function or the one of the environment,
+        "POST_EDIT_REWARD": True,  # whether you want to edit your rewards after an episode again or not.
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
@@ -70,7 +72,7 @@ SETTINGS = {
 
         # SELF-Play Settings
         "SELF_PLAY": True,  # If the agent should play against itself like in AlphaGo
-        "SELF_PLAY_FREQUENCY": 10,
+        "SELF_PLAY_FREQUENCY": 1,
         # Frequency of self-play episodes. Play 1/#Number against an agent from the other pool. Play #Number-1/#Number against a version of itself
         "SELF_PLAY_KEEP_AGENT_FREQUENCY": 5000,
         # Put a checkpoint of your agent after x iterations into your opponent pool?
@@ -107,7 +109,7 @@ SETTINGS = {
         "USE_GRADIENT_CLIPPING": False,  # If the gradients should be clipped
         "GRADIENT_CLIPPING_VALUE": 1.0,  # The gradient clipping value
         "USE_NORM_CLIPPING": True,  # If the norm of the gradients should be clipped
-        "NORM_CLIPPING_VALUE": 20.0,  # The gradient clipping value
+        "NORM_CLIPPING_VALUE": 1.0,  # The gradient clipping value
         "USE_CLIP_FOREACH": torch.cuda.is_available(),
         # USE the foreach implementation of gradient clipping. Only relevant if 'USE_GRADIENT_CLIPPING' is True
     },
@@ -301,13 +303,14 @@ EPISODE_UPDATE_ITER = MAIN_SETTINGS["EPISODE_UPDATE_ITER"]
 SHOW_PLOTS = MAIN_SETTINGS["SHOW_PLOTS"]
 CHECKPOINT_ITER = MAIN_SETTINGS["CHECKPOINT_ITER"]
 CHECKPOINT_NAME = MAIN_SETTINGS["CHECKPOINT_NAME"]
-CURIOSITY = MAIN_SETTINGS["CURIOSITY"]
 SELF_PLAY_FREQUENCY = MAIN_SETTINGS["SELF_PLAY_FREQUENCY"]
 SELF_PLAY_KEEP_AGENT_FREQUENCY = MAIN_SETTINGS["SELF_PLAY_KEEP_AGENT_FREQUENCY"]
 PLOT_FREQUENCY = MAIN_SETTINGS["PLOT_FREQUENCY"]
 BATTLE_STATISTICS_FREQUENCY = MAIN_SETTINGS["BATTLE_STATISTICS_FREQUENCY"]
 SELF_PLAY_UPDATE_FREQUENCY = MAIN_SETTINGS["SELF_PLAY_UPDATE_FREQUENCY"]
 WEIGHTING_RULE = MAIN_SETTINGS["WEIGHTING_RULE"]
+APPLY_OWN_REWARD_FUNCTION = MAIN_SETTINGS["APPLY_OWN_REWARD_FUNCTION"]
+POST_EDIT_REWARD = MAIN_SETTINGS["POST_EDIT_REWARD"]
 
 BATCH_SIZE = AGENT_SETTINGS["BATCH_SIZE"]
 

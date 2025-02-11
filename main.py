@@ -65,8 +65,8 @@ def main():
         random_agent = initAgent(use_algo = RANDOM_ALGO, env = env, device = DEVICE, checkpoint_name = None)
         weak_comp_agent = initAgent(use_algo = WEAK_COMP_ALGO, env = env, device = DEVICE, checkpoint_name = None)
         strong_comp_agent = initAgent(use_algo = STRONG_COMP_ALGO, env = env, device = DEVICE, checkpoint_name = None)
-        dqn_agent = initAgent(use_algo = DQN_ALGO, env = env, device = DEVICE,
-                              checkpoint_name = DQN_SETTINGS["CHECKPOINT_NAME"])
+        # dqn_agent = initAgent(use_algo = DQN_ALGO, env = env, device = DEVICE,
+        #                      checkpoint_name = DQN_SETTINGS["CHECKPOINT_NAME"])
         # ppo_agent = initAgent(use_algo = PPO_ALGO, env = env, device = DEVICE, checkpoint_name = PPO_SETTINGS["CHECKPOINT_NAME"])
         ddpg_agent = initAgent(use_algo = DDPG_ALGO, env = env, device = DEVICE,
                                checkpoint_name = DDPG_SETTINGS["CHECKPOINT_NAME"])
@@ -77,11 +77,11 @@ def main():
 
         # Currently, we do not allow the opponent networks to train as well. This might be an extra feature
         random_agent.setMode(eval = True)
-        weak_comp_agent.setMode(eval = True)
-        strong_comp_agent.setMode(eval = True)
+        # weak_comp_agent.setMode(eval = True)
+        #strong_comp_agent.setMode(eval = True)
         # dqn_agent.setMode(eval = True)
         # ppo_agent.setMode(eval = True)
-        ddpg_agent.setMode(eval = True)
+        # ddpg_agent.setMode(eval = True)
         # td3_agent.setMode(eval = True)
         # sac_agent.setMode(eval = True)
         # mpo_agent.setMode(eval = True)
@@ -89,11 +89,11 @@ def main():
 
         opponent_pool = {
             RANDOM_ALGO: random_agent,
-            WEAK_COMP_ALGO: weak_comp_agent,
-            STRONG_COMP_ALGO: strong_comp_agent,
+            # WEAK_COMP_ALGO: weak_comp_agent,
+            #STRONG_COMP_ALGO: strong_comp_agent,
             #DQN_ALGO: dqn_agent,
             # PPO_ALGO: ppo_agent,
-            f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
+            #f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
             # f"{TD3_ALGO}_Checkpoint": td3_agent,
             # f"{SAC_ALGO}_Checkpoint": sac_agent,
             # f"{MPO_ALGO}_Checkpoint": mpo_agent,
