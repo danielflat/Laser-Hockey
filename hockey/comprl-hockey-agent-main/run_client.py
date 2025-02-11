@@ -67,7 +67,7 @@ class TDMPC2ServerAgent(Agent):
         super().__init__()
         self.env = initEnv(use_env = HOCKEY, render_mode = None, number_discrete_actions = None, proxy_rewards = False)
         self.agent = initAgent(use_algo = TDMPC2_ALGO, env = self.env,
-                               checkpoint_name = TD_MPC2_SETTINGS["checkpoint_name"], device = DEVICE)
+                               checkpoint_name=TD_MPC2_SETTINGS["CHECKPOINT_NAME"], device=DEVICE)
         # set the agent into eval mode
         self.agent.setMode(eval = True)
 
@@ -78,7 +78,7 @@ class TDMPC2ServerAgent(Agent):
 
     def on_start_game(self, game_id) -> None:
         self.agent.reset()
-        print(f"Game started")
+        print(f"Game started with ID: {game_id}")
 
     def on_end_game(self, result: bool, stats: list[float]) -> None:
         text_result = "won" if result else "lost"
@@ -122,7 +122,7 @@ def initialize_agent(agent_args: list[str]) -> Agent:
     parser.add_argument(
         "--agent",
         type = str,
-        choices = ["weak", "strong", "random", "mpo"],
+        choices=["weak", "strong", "random", "mpo", "tdmpc2"],
         default = "weak",
         help = "Which agent to use.",
     )
@@ -137,7 +137,7 @@ def initialize_agent(agent_args: list[str]) -> Agent:
     elif args.agent == "random":
         agent = RandomAgent()
     elif args.agent == "tdmpc2":
-        agent = TDMPC2Agent()
+        agent = TDMPC2ServerAgent()
     elif args.agent == "mpo":
         agent = MPOServerAgent()
     else:

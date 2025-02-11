@@ -271,7 +271,8 @@ SETTINGS = {
         "LATENT_SIZE": 512,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
-        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the TD-MPC-2 Hockey agent?
+        "CHECKPOINT_NAME": get_path("good_checkpoints/hockey_tdmpc_2_weak_opponent_10000.pth"),
+        # which checkpoint should be used for the TD-MPC-2 Hockey agent?
     }
 }
 
