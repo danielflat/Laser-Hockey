@@ -9,8 +9,9 @@ import numpy as np
 from comprl.client import Agent, launch_client
 
 from src.agents.tdmpc2agent import TDMPC2Agent
-from src.settings import AGENT_SETTINGS, DEVICE, TD_MPC2_SETTINGS
-from src.util.constants import HOCKEY, TDMPC2_ALGO
+from src.agents.mpoagent import MPOAgent
+from src.settings import AGENT_SETTINGS, DEVICE, TD_MPC2_SETTINGS, MPO_SETTINGS
+from src.util.constants import HOCKEY, TDMPC2_ALGO, MPO_ALGO
 from src.util.contract import initAgent, initEnv
 
 
@@ -85,6 +86,32 @@ class TDMPC2ServerAgent(Agent):
             f"Game ended: {text_result} with my score: "
             f"{stats[0]} against the opponent with score: {stats[1]}"
         )
+        
+class MPOServerAgent(Agent):
+    def __init__(self) -> None:
+        super().__init__()
+        self.env = initEnv(use_env = HOCKEY, render_mode = None, number_discrete_actions = None, proxy_rewards = False)
+        self.agent = initAgent(use_algo = MPO_ALGO, env = self.env,
+                               checkpoint_name = MPO_SETTINGS["CHECKPOINT_NAME"], device = DEVICE)
+        self.agent.setMode(eval = True)
+
+    def get_step(self, observation: list[float]) -> list[float]:
+        state = torch.tensor(observation, dtype = torch.float32).to(DEVICE)
+        action = self.agent.act(state)
+        if isinstance(action, int):
+            action = self.env.discrete_to_continous_action(action)
+        return action  
+
+    def on_start_game(self, game_id) -> None:
+        self.agent.reset()
+        print(f"Game started")
+
+    def on_end_game(self, result: bool, stats: list[float]) -> None:
+        text_result = "won" if result else "lost"
+        print(
+            f"Game ended: {text_result} with my score: "
+            f"{stats[0]} against the opponent with score: {stats[1]}"
+        )
 
 
 # Function to initialize the agent.  This function is used with `launch_client` below,
@@ -95,7 +122,7 @@ def initialize_agent(agent_args: list[str]) -> Agent:
     parser.add_argument(
         "--agent",
         type = str,
-        choices = ["weak", "strong", "random"],
+        choices = ["weak", "strong", "random", "mpo"],
         default = "weak",
         help = "Which agent to use.",
     )
@@ -111,6 +138,8 @@ def initialize_agent(agent_args: list[str]) -> Agent:
         agent = RandomAgent()
     elif args.agent == "tdmpc2":
         agent = TDMPC2Agent()
+    elif args.agent == "mpo":
+        agent = MPOServerAgent()
     else:
         raise ValueError(f"Unknown agent: {args.agent}")
 
