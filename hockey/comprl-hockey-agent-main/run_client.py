@@ -84,7 +84,7 @@ class TDMPC2ServerAgent(Agent):
         text_result = "won" if result else "lost"
         print(
             f"Game ended: {text_result} with my score: "
-            f"{stats[0]} against the opponent with score: {stats[1]}"
+            f"{stats[0]} against the opponent with score: {stats[1]}. Stats: {stats}"
         )
         
 class MPOServerAgent(Agent):
