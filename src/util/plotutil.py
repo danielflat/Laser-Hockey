@@ -188,7 +188,6 @@ def plot_mpo_training_metrics(
     plt.title("Critic Loss")
     plt.xlabel("Episode")
     plt.ylabel("Critic Loss")
-    plt.legend(prop={'size': 6})
     plt.grid()
 
     # Plot actor loss
@@ -197,7 +196,6 @@ def plot_mpo_training_metrics(
     plt.title("Actor Loss")
     plt.xlabel("Episode")
     plt.ylabel("Actor Loss")
-    plt.legend(prop={'size': 6})
     plt.grid()
 
     # Plot KL Divergence
@@ -210,7 +208,6 @@ def plot_mpo_training_metrics(
     plt.title("$KL_D(\pi||\pi_{{target}})$")
     plt.xlabel("Episode")
     plt.ylabel("$KL_D$")
-    plt.legend(prop={'size': 6})
     plt.grid()
 
     # Plot opponent metrics

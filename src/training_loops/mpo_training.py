@@ -17,11 +17,11 @@ from src.settings import AGENT_SETTINGS, BATTLE_STATISTICS_FREQUENCY, CHECKPOINT
     SEED, SELF_PLAY, SELF_PLAY_FREQUENCY, SELF_PLAY_UPDATE_FREQUENCY, SELF_PLAY_KEEP_AGENT_FREQUENCY, SETTINGS, \
     SHOW_PLOTS, TD3_SETTINGS, TD_MPC2_SETTINGS, USE_ALGO, \
     CURIOSITY, BATCH_SIZE, EPISODE_UPDATE_ITER, MODEL_NAME, NUM_TRAINING_EPISODES, DISCRETE, RENDER_MODE, SEED
+from src.util.icmutil import ICM
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
     TD3_ALGO, TDMPC2_ALGO, WEAK_COMP_ALGO, MPO_ALGO
 from src.util.contract import initAgent, initEnv, initValEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics, plot_mpo_training_metrics, plot_mpo_intrinsic_rewards
-
 
 def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, self_opponent = Agent):
     """
@@ -134,6 +134,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
         
         # After some episodes, we optimize
         if (i_episode % EPISODE_UPDATE_ITER == 0) and (len(memory) >= 100 * BATCH_SIZE):
+            # Optimization of the agent
             losses = agent.optimize(memory, episode_i=total_episodes)
             
             # And we log the losses in the episode

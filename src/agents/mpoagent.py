@@ -21,13 +21,17 @@ Author : Andre Pfrommer
 
 class Actor(nn.Module):
     """
-    Policy network for continuous action space that outputs the mean and covariance matrix of a multivariate Gaussian distribution
+    Policy network for continuous action space that outputs the mean and covariance matrix of 
+    a multivariate Gaussian distribution
     
     - ds the dimension of the state space
     - da the dimension of the action space
+    If action space continuous:
     - Mean layer outputs the mean vector with size (da)
     - Cholesky layer outputs the lower triangular matrix of the covariance matrix with size (da, da), 
     thus the output size is (da*(da+1))//2
+    If action space discrete:
+    - Softmax over all possible discrete actions da
     """
     def __init__(self, state_space, action_space, action_size, hidden_dim: int, continuous: bool, device: torch.device = None):
         super().__init__()
@@ -73,43 +77,36 @@ class Actor(nn.Module):
         :param state: (B, ds), where B the batch size and ds the dimension of the state space
         :return: mean vector (B, da) and cholesky factorization of covariance matrix (B, da, da)
         """
-        #Batch size
+        # Batch size
         B = state.size(0) 
         
-        # 1. Preprocess the input state
+        # Preprocess the input state
         x = self.net(state.to(self.device)).to(self.device)  # (B, 256)
         if self.continuous:
-            # 2. Output layer for the mean and rescaling into the action space
+            
             action_low = self.action_low.to(self.device).unsqueeze(0)  # (1, da)
             action_high = self.action_high.to(self.device).unsqueeze(0)  # (1, da)
             
             mean = torch.sigmoid(self.mean_layer(x)).to(self.device)  # (B, da)
             mean = action_low + (self.action_high.unsqueeze(0) - action_low) * mean 
             
-            # 3. Output layer for the cholesky factorization of the covariance matrix
+            # Output layer for the cholesky factorization of the covariance matrix
             cholesky_vector = self.cholesky_layer(x)  # (B, (da*(da+1))//2)
             cholesky_diag_index = torch.arange(self.da, dtype=torch.long, device=self.device) + 1
-            #Calculate the index of the diagonal of the cholesky factorization
+            
+            # Calculate the index of the diagonal of the cholesky factorization
             cholesky_diag_index = (cholesky_diag_index * (cholesky_diag_index + 1)) // 2 - 1
             
-            #Ensure the diagonal of the cholesky factorization is positive
+            # Ensure the diagonal of the cholesky factorization is positive
             cholesky_vector = cholesky_vector.clone()
             cholesky_vector[:, cholesky_diag_index] = F.softplus(cholesky_vector[:, cholesky_diag_index]) + 1e-6
             
-            #stabelize off diagonal elements
-            tril_indices = torch.tril_indices(row=self.da, col=self.da, offset=0, device=self.device)
-            cholesky_vector[:, tril_indices[0] != tril_indices[1]] = torch.clamp(
-                cholesky_vector[:, tril_indices[0] != tril_indices[1]], min=-1.0, max=1.0
-            )
-            
-            #Build Cholesky matrix
+            # Build Cholesky matrix
             cholesky = torch.zeros(size=(B, self.da, self.da), dtype=torch.float32, device=self.device)
-            #Fill the lower triangular matrix of the cholesky factorization defined above
+            
+            # Fill the lower triangular matrix of the cholesky factorization defined above
             cholesky[:, tril_indices[0], tril_indices[1]] = cholesky_vector
             
-            # Add small value to diagonal
-            diag_indices = torch.arange(self.da)
-            cholesky[:, diag_indices, diag_indices] += 1e-6
             return mean, cholesky
         else:
             # 2. Output layer here softmax over all possible discrete actions da
@@ -118,11 +115,10 @@ class Actor(nn.Module):
     
     def greedyAction(self, state: torch.Tensor) -> torch.Tensor:
         """
-        :param:
-            (B, ds) the state tensor
-        :return:
-            (B,) the greedy action
+        :state: (B, ds) the current state
+        :return: (B,) the greedy action
         """
+        assert not self.continuous
         with torch.no_grad():
             action_probs, _ = self.forward(state)
             greedyAction = torch.argmax(action_probs, dim = -1)
@@ -137,7 +133,6 @@ class Critic(nn.Module):
     If action space discrete:
     - Input layer for only the state
     - Output layer for the Q value over all possible discrete actions da
-    :param env: OpenAI gym environment
     """
     def __init__(self, state_space, action_space, action_size, hidden_dim: int, continuous: bool):
         super(Critic, self).__init__()
@@ -145,25 +140,22 @@ class Critic(nn.Module):
         self.ds = state_space.shape[0]
         if self.continuous:
             self.da = action_size
+            # Get q value for the given action
+            in_dim = self.ds + self.da
+            out_dim = 1
         else:
             self.da = action_size 
+            # Get q value over all actions
+            in_dim = self.ds
+            out_dim = self.da
             
-        if self.continuous:
-            self.net = nn.Sequential(
-                nn.Linear(self.ds + self.da, hidden_dim),
-                nn.LeakyReLU(),
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.LeakyReLU(),
-                nn.Linear(hidden_dim, 1)
-            )
-        else:
-            self.net = nn.Sequential(
-                nn.Linear(self.ds, hidden_dim),
-                nn.LeakyReLU(),
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.LeakyReLU(),
-                nn.Linear(hidden_dim, self.da),
-            )
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dim, out_dim)
+        )
  
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         """
@@ -183,6 +175,9 @@ class Critic(nn.Module):
         """
         Calculates the Q value for the given state and action
         Only needed for discrete action spaces 
+        :param state: (B, ds)
+        :param action: (B, 1)
+        :return: Q-value
         """
         assert not self.continuous
         
@@ -383,7 +378,8 @@ class MPOAgent(Agent):
         :return: (K, da) or (K, N) the action weights qij
         """
         q_target_np = q_target.cpu().numpy()
-        π_target_np = π_target.cpu().numpy() if not self.continuous else None
+        # If discrete, we can use the policy prob for all possible actions to generate the mean
+        π_target_np = π_target.cpu().numpy() if not self.continuous else None 
             
         def dual(η):
             """
@@ -478,8 +474,8 @@ class MPOAgent(Agent):
         This is done by:
             1. Get the output of the current policy to compute the MLE loss using qij
             2. Get the KL divergence between the current and target policy
-            3. Update the Lagrangian multipliers by gradient descent (inner optimization loop)
-            4. Combine everything to get the final loss for the actor (outer optimization loop)
+            3. Update the Lagrangian multipliers by gradient descent (inner minimization loop)
+            4. Combine everything to get the final loss for the actor (outer maximization loop)
         
         :states: (B, ds) the batch of states
         :sampled_actions: (N, K, da) the sampled actions
@@ -498,14 +494,6 @@ class MPOAgent(Agent):
             π1 = MultivariateNormal(loc=μ, scale_tril=b_A)  # (K,)
             π2 = MultivariateNormal(loc=b_μ, scale_tril=A)  # (K,)
             
-            # First we compute the known MLE Loss without the KL constraints 
-            # Note that here we have 2 actor objectives, so we have to compute the log prob for both
-            loss_MLE = torch.mean(
-                qij.transpose(0, 1) * (
-                    π1.expand((N, K)).log_prob(sampled_actions)  # (N, K)
-                    + π2.expand((N, K)).log_prob(sampled_actions)  # (N, K)
-                )
-            )
             # 2. Get the KL divergencies for the above defined distributions
             kl_μ, kl_Σ = gaussian_kl(μi=b_μ, μ=μ, Ai=b_A, A=A)
             
@@ -515,8 +503,13 @@ class MPOAgent(Agent):
             self.η_μ_kl = np.clip(0.0, self.η_μ_kl, 1.0)
             self.η_Σ_kl = np.clip(0.0, self.η_Σ_kl, 1.0)
             
-            # 4. Then we add the KL constraints to the loss (outer optimization loop)
-            # last eq of p.5
+            # 4. Then we add the KL constraints to the loss (outer optimization loop), last eq of p.5
+            loss_MLE = torch.mean(
+                qij.transpose(0, 1) * (
+                    π1.expand((N, K)).log_prob(sampled_actions)  # (N, K)
+                    + π2.expand((N, K)).log_prob(sampled_actions)  # (N, K)
+                )
+            )
             if self.kl_constraint_scalar is None:
                 loss_actor = -(
                     loss_MLE
@@ -524,7 +517,7 @@ class MPOAgent(Agent):
                     + self.η_Σ_kl * (self.ε_kl_Σ - kl_Σ)
                 )
             else:
-                # If we dont use lagrangian optimization, just use a scalar value
+                # If we dont use lagrangian optimization, just use the given factor
                 loss_actor = -(
                     loss_MLE
                     + self.kl_constraint_scalar * (self.ε_kl_μ - kl_μ)
@@ -541,9 +534,6 @@ class MPOAgent(Agent):
             π_p, _ = self.actor.forward(states)  # (K, da)
             π = Categorical(probs=π_p)  # (K,)
             π_log = π.log_prob(actions).T  # (K, da)
-
-            # MLE loss
-            loss_MLE = torch.mean(qij * π_log) # (K, da)
             
             # 2. KL divergence btw the old and new policy, now a categorical one
             kl = categorical_kl(p1=π_p, p2=b_p).detach()
@@ -553,11 +543,18 @@ class MPOAgent(Agent):
             self.η_kl = np.clip(0.0, self.η_kl, 1.0)
             
             # 4. Final loss
+            loss_MLE = torch.mean(qij * π_log) # (K, da)
             if self.kl_constraint_scalar is None:
-                loss_actor = -(loss_MLE + self.η_kl * (self.ε_kl - kl))
+                # Use the optimized scalar
+                loss_actor = -(
+                    loss_MLE + self.η_kl * (self.ε_kl - kl)
+                )
             else:
                 # Use the given scalar
-                loss_actor = -loss_MLE + self.kl_constraint_scalar * (self.ε_kl - kl)
+                loss_actor = -(
+                    loss_MLE 
+                    + self.kl_constraint_scalar * (self.ε_kl - kl)
+                )
             
             return loss_actor, kl.detach(), None
                     
@@ -570,7 +567,7 @@ class MPOAgent(Agent):
         
         :param memory: (ReplayMemory) the replay memory
         :param episode_i: (int) the current episode number
-        :return: (list[float]) the losses of the actor and critic networks
+        :return: (list[float]) the losses of the actor and critic networks and Kl divergencies
         """
         losses = []
         
@@ -578,12 +575,12 @@ class MPOAgent(Agent):
         N = self.sample_action_num 
         # Nr of sampled states, here the Batch size
         K = self.batch_size  
-        for _ in range(self.opt_iter):
+        for i in range(self.opt_iter):
             # Sample from replay buffer, dimensions (K, ds), (K, da), (K,), (K, ds) 
             states, actions, rewards, next_states, dones, info = memory.sample(batch_size=self.batch_size, randomly=True)
             
-            # Train the curiosity module 
-            if self.curiosity is not None:
+            # Train the curiosity module evey 16 optimization steps
+            if self.curiosity is not None and i % 32 == 0:
                 self.icm.train(states, next_states, actions)
             
             # 1: Policy Evaluation: Update Critic (Q-function)
