@@ -26,7 +26,7 @@ class ICM(nn.Module):
         super(ICM, self).__init__()
         self.state_size = state_size
         self.action_size = action_size
-        self.resnet_depth = 3
+        self.resnet_depth = 4
         self.eta = eta
         self.discrete = discrete
         self.device = device
@@ -85,6 +85,10 @@ class ICM(nn.Module):
         """
         state, next_state, action = self._ensure_batch(state, next_state, action)
         
+        state = state.to(self.device)
+        next_state = next_state.to(self.device)
+        action = action.to(self.device)
+        
         # 1. Encoding state and next state
         encode_state = self.feature(state)
         encode_next_state = self.feature(next_state)
@@ -140,8 +144,6 @@ class ICM(nn.Module):
         :param action: (B, da) the batch of possible actions
         :return: (B, ) the intrinsic rewards
         """
-        state = torch.FloatTensor(state).to(self.device)
-        next_state = torch.FloatTensor(next_state).to(self.device)
         if self.discrete:
             action = action.clone().detach().long().to(self.device)
             action_onehot = int_to_one_hot(action, self.action_size)
