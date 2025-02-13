@@ -14,7 +14,6 @@ from src.settings import AGENT_SETTINGS, DEVICE, TD_MPC2_SETTINGS, MPO_SETTINGS
 from src.util.constants import HOCKEY, TDMPC2_ALGO, MPO_ALGO
 from src.util.contract import initAgent, initEnv
 
-
 class RandomAgent(Agent):
     """A hockey agent that simply uses random actions."""
 
@@ -65,6 +64,10 @@ class HockeyAgent(Agent):
 class TDMPC2ServerAgent(Agent):
     def __init__(self) -> None:
         super().__init__()
+        self.game_count = 0  # tracks how many games have been played in the session
+        self.game_won = 0  # tracks how many games have been won in the session
+        self.game_lost = 0  # tracks how many games have been lost in the session
+
         self.env = initEnv(use_env = HOCKEY, render_mode = None, number_discrete_actions = None, proxy_rewards = False)
         self.agent = initAgent(use_algo = TDMPC2_ALGO, env = self.env,
                                checkpoint_name=TD_MPC2_SETTINGS["CHECKPOINT_NAME"], device=DEVICE)
@@ -78,14 +81,21 @@ class TDMPC2ServerAgent(Agent):
 
     def on_start_game(self, game_id) -> None:
         self.agent.reset()
-        print(f"Game started with ID: {game_id}")
+        print(f"Game {self.game_count + 1} started with ID: {game_id}")
 
     def on_end_game(self, result: bool, stats: list[float]) -> None:
         text_result = "won" if result else "lost"
         print(
-            f"Game ended: {text_result} with my score: "
-            f"{stats[0]} against the opponent with score: {stats[1]}. Stats: {stats}"
+            f"Game {self.game_count + 1} ended: {text_result} with my score: "
+            f"{stats[0]} against the opponent with score: {stats[1]}"
         )
+        self.game_count += 1
+        if text_result == "won":
+            self.game_won += 1
+        else:
+            self.game_lost += 1
+        print(
+            f"Games played: {self.game_count} | Games won: {self.game_won} | Games lost: {self.game_lost} | Win rate: {self.game_won / self.game_count} | Loss rate: {self.game_lost / self.game_count}")
         
 class MPOServerAgent(Agent):
     def __init__(self) -> None:
