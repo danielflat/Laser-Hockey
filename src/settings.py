@@ -236,6 +236,7 @@ SETTINGS = {
         "KL_CONSTRAINT_MEAN": 0.01, # Mean Kl Constraint for cont AS
         "KL_CONSTRAINT_VAR": 0.0001, # Var Kl Constraint for cont AS
         "KL_CONSTRAINT": 0.01, # Kl Constraint for disc AS
+        "DISC_TO_CONT_TRAFO": True,
         # All other Hyperparameters are set in the MPO class
         "CHECKPOINT_NAME": get_path("good_checkpoints/hockey_mpo_disc_icm_25-02-12 01_42_52_000090000.pth"),
         # which checkpoint should be used for the MPO Hockey agent?

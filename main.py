@@ -90,16 +90,16 @@ def main():
         tdmpc2_agent.setMode(eval=True)
 
         opponent_pool = {
-            RANDOM_ALGO: random_agent,
-            WEAK_COMP_ALGO: weak_comp_agent,
-            STRONG_COMP_ALGO: strong_comp_agent,
+            # RANDOM_ALGO: random_agent,
+            # WEAK_COMP_ALGO: weak_comp_agent,
+            # STRONG_COMP_ALGO: strong_comp_agent,
             #DQN_ALGO: dqn_agent,
             # PPO_ALGO: ppo_agent,
-            f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
+            #f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
             # f"{TD3_ALGO}_Checkpoint": td3_agent,
             # f"{SAC_ALGO}_Checkpoint": sac_agent,
             f"{MPO_ALGO}_Checkpoint": mpo_agent,
-            f"{TDMPC2_ALGO}_Checkpoint": tdmpc2_agent,
+            #f"{TDMPC2_ALGO}_Checkpoint": tdmpc2_agent,
         }
 
         # if you want to use self-play, we have to init the self opponent agent
