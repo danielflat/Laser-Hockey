@@ -49,11 +49,11 @@ Author: Daniel Flat
 
 # Settings for this class
 TEST_CHECK_POINT_NAME_PLAYER_1 = get_path(
-    "good_checkpoints/hockey_mpo_disc_icm_25-02-12 01_42_52_000090000.pth")  # Which checkpoint do you want to test
-TEST_CHECK_POINT_NAME_PLAYER_2 = get_path(
     "good_checkpoints/tdmpc2-after-strong-80 25-02-12 22_31_42_000005500.pth")  # Which checkpoint do you want to test
+TEST_CHECK_POINT_NAME_PLAYER_2 = get_path(
+    "good_checkpoints/tdmpc2-with-ddpg-strong-68 25-02-12 22_31_42_000010000.pth")  # Which checkpoint do you want to test
 TEST_USE_ENV = HOCKEY  # On which environment do you want to test?
-TEST_USE_ALGO_PLAYER_1 = MPO_ALGO  # Which algorithm do you want to test? Can be "human" or an algo constant
+TEST_USE_ALGO_PLAYER_1 = TDMPC2_ALGO  # Which algorithm do you want to test? Can be "human" or an algo constant
 TEST_USE_ALGO_PLAYER_2 = TDMPC2_ALGO  # Only Hockey: Which algorithm do you want to test for player 2? Can be "human" or an algo constant
 TEST_NUMBER_DISCRETE_ACTIONS = None  # if you want to use discrete actions or continuous. If > 0, you use the DiscreteActionWrapper
 TEST_SEED = 100000  # Set a test seed if you want to
