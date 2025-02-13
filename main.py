@@ -5,9 +5,9 @@ import yaml
 
 from src.replaymemory import ReplayMemory
 from src.settings import AGENT_SETTINGS, BUFFER_SIZE, CHECKPOINT_NAME, DDPG_SETTINGS, DEVICE, DQN_SETTINGS, \
-    MODEL_NAME, NUMBER_DISCRETE_ACTIONS, PROXY_REWARDS, RENDER_MODE, SAC_NUM_EPISODES_PER_TRAINING_EPOCH, \
+    MODEL_NAME, MPO_SETTINGS, NUMBER_DISCRETE_ACTIONS, PROXY_REWARDS, RENDER_MODE, SAC_NUM_EPISODES_PER_TRAINING_EPOCH, \
     SAC_VALIDATION_FREQ, SEED, SELF_PLAY, SETTINGS, \
-    USE_ALGO, USE_ENV, USE_TF32
+    TD_MPC2_SETTINGS, USE_ALGO, USE_ENV, USE_TF32
 from src.training_loops.mpo_training import do_mpo_hockey_training
 from src.training_loops.other_algos_training import do_hockey_testing, do_hockey_training, do_other_env_testing, \
     do_other_env_training
@@ -72,32 +72,34 @@ def main():
                                checkpoint_name = DDPG_SETTINGS["CHECKPOINT_NAME"])
         # td3_agent = initAgent(use_algo = TD3_ALGO, env = env, device = DEVICE, checkpoint_name = TD3_SETTINGS["CHECKPOINT_NAME"])
         # sac_agent = initAgent(use_algo = SAC_ALGO, env = env, device = DEVICE, checkpoint_name = SAC_SETTINGS["CHECKPOINT_NAME"])
-        # mpo_agent = initAgent(use_algo = MPO_ALGO, env = env, device = DEVICE, checkpoint_name = MPO_SETTINGS["CHECKPOINT_NAME"])
-        # tdmpc2_agent = initAgent(use_algo = TDMPC2_ALGO, env = env, device = DEVICE, checkpoint_name = TD_MPC2_SETTINGS["CHECKPOINT_NAME"])
+        mpo_agent = initAgent(use_algo=MPO_ALGO, env=env, device=DEVICE,
+                              checkpoint_name=MPO_SETTINGS["CHECKPOINT_NAME"])
+        tdmpc2_agent = initAgent(use_algo=TDMPC2_ALGO, env=env, device=DEVICE,
+                                 checkpoint_name=TD_MPC2_SETTINGS["CHECKPOINT_NAME"])
 
         # Currently, we do not allow the opponent networks to train as well. This might be an extra feature
         random_agent.setMode(eval = True)
-        # weak_comp_agent.setMode(eval = True)
-        #strong_comp_agent.setMode(eval = True)
+        weak_comp_agent.setMode(eval=True)
+        strong_comp_agent.setMode(eval=True)
         # dqn_agent.setMode(eval = True)
         # ppo_agent.setMode(eval = True)
-        # ddpg_agent.setMode(eval = True)
+        ddpg_agent.setMode(eval=True)
         # td3_agent.setMode(eval = True)
         # sac_agent.setMode(eval = True)
-        # mpo_agent.setMode(eval = True)
-        # tdmpc2_agent.setMode(eval = True)
+        mpo_agent.setMode(eval=True)
+        tdmpc2_agent.setMode(eval=True)
 
         opponent_pool = {
-            RANDOM_ALGO: random_agent,
+            # RANDOM_ALGO: random_agent,
             # WEAK_COMP_ALGO: weak_comp_agent,
             #STRONG_COMP_ALGO: strong_comp_agent,
             #DQN_ALGO: dqn_agent,
             # PPO_ALGO: ppo_agent,
-            #f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
+            f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
             # f"{TD3_ALGO}_Checkpoint": td3_agent,
             # f"{SAC_ALGO}_Checkpoint": sac_agent,
-            # f"{MPO_ALGO}_Checkpoint": mpo_agent,
-            # f"{TDMPC2_ALGO}_Checkpoint": tdmpc2_agent,
+            f"{MPO_ALGO}_Checkpoint": mpo_agent,
+            #f"{TDMPC2_ALGO}_Checkpoint": tdmpc2_agent,
         }
 
         # if you want to use self-play, we have to init the self opponent agent
