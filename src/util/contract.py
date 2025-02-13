@@ -111,7 +111,8 @@ def initAgent(use_algo: str, env, device: device,
                 action_space = action_space,
                 agent_settings = agent_settings,
                 device = device,
-                mpo_settings = mpo_settings
+                mpo_settings=mpo_settings,
+                env=env
             )
         elif use_algo == RANDOM_ALGO:
             agent = RandomAgent(env = env, agent_settings = agent_settings, device = device)

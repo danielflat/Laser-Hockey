@@ -237,7 +237,8 @@ SETTINGS = {
         "KL_CONSTRAINT_VAR": 0.0001, # Var Kl Constraint for cont AS
         "KL_CONSTRAINT": 0.01, # Kl Constraint for disc AS
         # All other Hyperparameters are set in the MPO class
-        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the MPO Hockey agent?
+        "CHECKPOINT_NAME": get_path("good_checkpoints/hockey_mpo_disc_icm_25-02-12 01_42_52_000090000.pth"),
+        # which checkpoint should be used for the MPO Hockey agent?
     },
     "TD_MPC2": {
         "OPTIMIZER": {

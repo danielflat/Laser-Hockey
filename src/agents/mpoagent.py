@@ -211,8 +211,10 @@ class MPOAgent(Agent):
         (float) hard constraint of the covariance in the M-step. Used for continuous case
     
     """
-    def __init__(self, agent_settings, device, state_space, action_space, mpo_settings):
+
+    def __init__(self, agent_settings, device, state_space, action_space, mpo_settings, env):
         super().__init__(agent_settings, device)
+        self.env = env
         
         self.device = device
         self.action_space = action_space
@@ -310,6 +312,7 @@ class MPOAgent(Agent):
                         π_p, _ = self.actor(state)
                         π = Categorical(probs=π_p) 
                         action = π.sample().item()
+                action = self.env.discrete_to_continous_action(action)
         return action
     
     def critic_update(self, states: torch.Tensor, actions: torch.Tensor, dones: torch.Tensor, next_states: torch.Tensor, 
