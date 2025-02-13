@@ -13,6 +13,7 @@ from src.agent import Agent
 from src.replaymemory import ReplayMemory
 from src.util.directoryutil import get_path
 from src.util.icmutil import ICM
+from src.settings import USE_ENV
 from src.util.mathutil import categorical_kl, gaussian_kl
 
 """
@@ -222,8 +223,10 @@ class MPOAgent(Agent):
         
         # Get the MPO settings
         self.continuous = not mpo_settings.get("DISCRETE", False)
+        self.disc_to_cont_trafo = mpo_settings.get("DISC_TO_CONT_TRAFO", False)
         self.number_disc_actions = mpo_settings.get("NUMBER_DISCRETE_ACTIONS", 7)
         # NOTE: We need 7 actions in the discrete hockey environment
+        self.train_icm_freq = mpo_settings.get("TRAIN_ICM_FREQ", 32)
         self.hidden_dim = mpo_settings.get("HIDDEN_DIM", 256)  
         self.curiosity = mpo_settings.get("CURIOSITY", None)
         self.sample_action_num = mpo_settings.get("SAMPLE_ACTION_NUM", 64) #N
@@ -312,7 +315,9 @@ class MPOAgent(Agent):
                         π_p, _ = self.actor(state)
                         π = Categorical(probs=π_p) 
                         action = π.sample().item()
-                action = self.env.discrete_to_continous_action(action)
+                        
+                if self.disc_to_cont_trafo:
+                    action = self.env.discrete_to_continous_action(action)
         return action
     
     def critic_update(self, states: torch.Tensor, actions: torch.Tensor, dones: torch.Tensor, next_states: torch.Tensor, 
@@ -582,8 +587,8 @@ class MPOAgent(Agent):
             # Sample from replay buffer, dimensions (K, ds), (K, da), (K,), (K, ds) 
             states, actions, rewards, next_states, dones, info = memory.sample(batch_size=self.batch_size, randomly=True)
             
-            # Train the curiosity module evey 16 optimization steps
-            if self.curiosity is not None and i % 32 == 0:
+            # Train the curiosity module 
+            if self.curiosity is not None and i % self.train_icm_freq == 0:
                 self.icm.train(states, next_states, actions)
             
             # 1: Policy Evaluation: Update Critic (Q-function)
