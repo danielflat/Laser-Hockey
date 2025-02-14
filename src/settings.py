@@ -191,18 +191,7 @@ SETTINGS = {
         # which checkpoint should be used for the TD3 Hockey agent?
     },
     "SAC": {
-        "OPTIMIZER": _DEFAULT_OPTIMIZER,
-        "LOSS_FUNCTION": _DEFAULT_LOSS_FUNCTION,
-        "LEARN_ALPHA": True,  # Whether to learn the temperature alpha
-        "TARGET_ENTROPY": None,  # Target entropy for automatic alpha
-        "INIT_ALPHA": 0.2,
-        "HIDDEN_DIM": 256,
-        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the SAC Hockey agent?
-        "NUM_EPOCHS": 1_000,
-        "NUM_EPISODES_PER_TRAINING_EPOCH": 20,
-        "NUM_EPISODES_PER_VALIDATION_EPOCH": 20,
-        "VALIDATION_FREQ": 10,
-        "TRAIN_FREQ": 1
+        "CHECKPOINT_NAME": get_path("good_checkpoints/sac_epoch=914999-step=2745000.ckpt"),
     },
     "MPO": {
         "ACTOR": {
@@ -273,7 +262,7 @@ SETTINGS = {
         "LATENT_SIZE": 512,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
-        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-after-strong-80 25-02-12 22_31_42_000005500.pth"),
+        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-with-ddpg-strong-68 25-02-12 22_31_42_000010000.pth"),
         # which checkpoint should be used for the TD-MPC-2 Hockey agent?
     }
 }
@@ -316,13 +305,6 @@ APPLY_OWN_REWARD_FUNCTION = MAIN_SETTINGS["APPLY_OWN_REWARD_FUNCTION"]
 POST_EDIT_REWARD = MAIN_SETTINGS["POST_EDIT_REWARD"]
 
 BATCH_SIZE = AGENT_SETTINGS["BATCH_SIZE"]
-
-# SAC Params
-SAC_NUM_EPOCHS = SAC_SETTINGS["NUM_EPOCHS"]
-SAC_NUM_EPISODES_PER_TRAINING_EPOCH = SAC_SETTINGS["NUM_EPISODES_PER_TRAINING_EPOCH"]
-SAC_NUM_EPISODES_PER_VALIDATION_EPOCH = SAC_SETTINGS["NUM_EPISODES_PER_VALIDATION_EPOCH"]
-SAC_VALIDATION_FREQ = SAC_SETTINGS["VALIDATION_FREQ"]
-SAC_TRAIN_FREQ = SAC_SETTINGS["TRAIN_FREQ"]
 
 #MPO Params
 DISCRETE = MPO_SETTINGS["DISCRETE"]

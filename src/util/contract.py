@@ -23,7 +23,8 @@ from src.agents.dqnagent import DQNAgent
 from src.agents.mpoagent import MPOAgent
 from src.agents.ppoagent import PPOAgent
 from src.agents.randomagent import RandomAgent
-from src.agents.sac import SoftActorCritic
+
+from src.agents.sacagent import SACAgent
 from src.agents.td3agent import TD3Agent
 from src.agents.tdmpc2agent import TDMPC2Agent
 from src.settings import AGENT_SETTINGS, DDPG_SETTINGS, DQN_SETTINGS, MPO_SETTINGS, PPO_SETTINGS, SAC_SETTINGS, \
@@ -98,13 +99,12 @@ def initAgent(use_algo: str, env, device: device,
             agent = TD3Agent(state_space = state_space, action_space = action_space,
                             agent_settings = agent_settings, td3_settings = td3_settings, device = device)
         elif use_algo == SAC_ALGO:
-            agent = SoftActorCritic(
-                state_space = state_space,
-                action_space = action_space,
+            agent = SACAgent(
+                checkpoint_name=checkpoint_name,
                 agent_settings = agent_settings,
                 device = device,
-                sac_settings = sac_settings
             )
+            return agent
         elif use_algo == MPO_ALGO:
             agent = MPOAgent(
                 state_space = state_space,

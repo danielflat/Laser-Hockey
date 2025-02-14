@@ -131,6 +131,7 @@ class CriticNet(nn.Module):
 
 # df: I am experimenting here to try out if the Agent could also be a nn.Module
 # Can be maybe converted then to the parent class
+# TODO: Bad interface. Extend it with more parameters
 class TDMPC2Agent(Agent, nn.Module):
     def __init__(self, state_space: gymnasium.spaces.box.Box, action_space: gymnasium.spaces.box.Box,
                  agent_settings: dict, td_mpc2_settings: dict,

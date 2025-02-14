@@ -5,13 +5,12 @@ import yaml
 
 from src.replaymemory import ReplayMemory
 from src.settings import AGENT_SETTINGS, BUFFER_SIZE, CHECKPOINT_NAME, DDPG_SETTINGS, DEVICE, DQN_SETTINGS, \
-    MODEL_NAME, MPO_SETTINGS, NUMBER_DISCRETE_ACTIONS, PROXY_REWARDS, RENDER_MODE, SAC_NUM_EPISODES_PER_TRAINING_EPOCH, \
-    SAC_VALIDATION_FREQ, SEED, SELF_PLAY, SETTINGS, \
+    MODEL_NAME, MPO_SETTINGS, NUMBER_DISCRETE_ACTIONS, PROXY_REWARDS, RENDER_MODE, SAC_SETTINGS, SEED, SELF_PLAY, \
+    SETTINGS, \
     TD_MPC2_SETTINGS, USE_ALGO, USE_ENV, USE_TF32
 from src.training_loops.mpo_training import do_mpo_hockey_training
 from src.training_loops.other_algos_training import do_hockey_testing, do_hockey_training, do_other_env_testing, \
     do_other_env_training
-from src.training_loops.sac_training import do_sac_hockey_training
 from src.training_loops.tdmpc2_training import do_tdmpc2_hockey_training, do_tdmpc2agent_other_env_training
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
     TDMPC2_ALGO, WEAK_COMP_ALGO
@@ -71,7 +70,8 @@ def main():
         ddpg_agent = initAgent(use_algo = DDPG_ALGO, env = env, device = DEVICE,
                                checkpoint_name = DDPG_SETTINGS["CHECKPOINT_NAME"])
         # td3_agent = initAgent(use_algo = TD3_ALGO, env = env, device = DEVICE, checkpoint_name = TD3_SETTINGS["CHECKPOINT_NAME"])
-        # sac_agent = initAgent(use_algo = SAC_ALGO, env = env, device = DEVICE, checkpoint_name = SAC_SETTINGS["CHECKPOINT_NAME"])
+        sac_agent = initAgent(use_algo=SAC_ALGO, env=env, device=DEVICE,
+                              checkpoint_name=SAC_SETTINGS["CHECKPOINT_NAME"])
         mpo_agent = initAgent(use_algo=MPO_ALGO, env=env, device=DEVICE,
                               checkpoint_name=MPO_SETTINGS["CHECKPOINT_NAME"])
         tdmpc2_agent = initAgent(use_algo=TDMPC2_ALGO, env=env, device=DEVICE,
@@ -85,21 +85,21 @@ def main():
         # ppo_agent.setMode(eval = True)
         ddpg_agent.setMode(eval=True)
         # td3_agent.setMode(eval = True)
-        # sac_agent.setMode(eval = True)
+        sac_agent.setMode(eval=True)
         mpo_agent.setMode(eval=True)
         tdmpc2_agent.setMode(eval=True)
 
         opponent_pool = {
-            # RANDOM_ALGO: random_agent,
-            # WEAK_COMP_ALGO: weak_comp_agent,
-            # STRONG_COMP_ALGO: strong_comp_agent,
+            RANDOM_ALGO: random_agent,
+            WEAK_COMP_ALGO: weak_comp_agent,
+            STRONG_COMP_ALGO: strong_comp_agent,
             #DQN_ALGO: dqn_agent,
             # PPO_ALGO: ppo_agent,
-            #f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
+            f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
             # f"{TD3_ALGO}_Checkpoint": td3_agent,
-            # f"{SAC_ALGO}_Checkpoint": sac_agent,
+            f"{SAC_ALGO}_Checkpoint": sac_agent,
             f"{MPO_ALGO}_Checkpoint": mpo_agent,
-            #f"{TDMPC2_ALGO}_Checkpoint": tdmpc2_agent,
+            f"{TDMPC2_ALGO}_Checkpoint": tdmpc2_agent,
         }
 
         # if you want to use self-play, we have to init the self opponent agent
@@ -112,36 +112,11 @@ def main():
 
         if USE_ALGO == TDMPC2_ALGO or USE_ALGO == DDPG_ALGO:
             do_tdmpc2_hockey_training(env = env, agent = agent, memory = memory,
-                                      opponent_pool = copy.deepcopy(opponent_pool),
+                                      opponent_pool=opponent_pool,
                                       self_opponent = self_opponent)
         elif USE_ALGO == SAC_ALGO:
-            (
-                all_rewards,
-                all_wins,
-                all_critic_losses,
-                all_actor_losses,
-                all_alpha_losses,
-                all_episode_steps,
-                val_win_rates,
-                val_avg_rewards
-            ) = do_sac_hockey_training(env, val_env, agent, memory)
+            raise NotImplementedError
 
-            plot_sac_training_metrics(
-                all_rewards,
-                all_wins,
-                all_critic_losses,
-                all_actor_losses,
-                all_alpha_losses,
-                episodes_per_epoch = SAC_NUM_EPISODES_PER_TRAINING_EPOCH,
-                save = True
-            )
-
-            plot_sac_validation_metrics(
-                val_win_rates,
-                val_avg_rewards,
-                val_interval = SAC_VALIDATION_FREQ,
-                save = True
-            )
 
         elif USE_ALGO == MPO_ALGO:
             do_mpo_hockey_training(env = env, val_env = val_env, agent = agent, memory = memory,
@@ -166,7 +141,7 @@ def main():
         if USE_ENV == HOCKEY:
             if SELF_PLAY:
                 opponent_pool[USE_ALGO] = copy.deepcopy(agent)
-            do_hockey_testing(env = env, agent = agent, opponent_pool = copy.deepcopy(opponent_pool))
+            do_hockey_testing(env=env, agent=agent, opponent_pool=opponent_pool)
         else:
             do_other_env_testing(env = env, agent = agent)
     logging.info(f"Finished! 🚀")
