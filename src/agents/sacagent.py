@@ -79,15 +79,16 @@ class Actor(nn.Module):
 class SACAgent(Agent):
     def __init__(self, checkpoint_name: str, agent_settings: dict, device: torch.device):
         super().__init__(agent_settings, device)
-        checkpoint = torch.load(checkpoint_name, map_location=device)
+
+        checkpoint = torch.load(checkpoint_name, map_location=self.device)
         state_dict = checkpoint["state_dict"]
-        self.actor = Actor(state_dim=18, action_dim=4, num_layers=1, hidden_dim=256)
+        self.actor = Actor(state_dim=18, action_dim=4, num_layers=1, hidden_dim=256).to(self.device)
         actor_state_dict = {k.replace("actor.", ""): v for k, v in state_dict.items() if k.startswith("actor.")}
         self.actor.load_state_dict(actor_state_dict)
 
     @torch.no_grad()
     def act(self, observation):
-        return self.actor(observation.unsqueeze(0), deterministic=True).flatten().detach().numpy()
+        return self.actor(observation.unsqueeze(0).to(self.device), deterministic=True).flatten().detach().numpy()
 
     def reset(self):
         pass
