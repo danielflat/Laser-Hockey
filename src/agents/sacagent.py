@@ -88,7 +88,7 @@ class SACAgent(Agent):
 
     @torch.no_grad()
     def act(self, observation):
-        return self.actor(observation.unsqueeze(0).to(self.device), deterministic=True).flatten().detach().numpy()
+        return self.actor(observation.unsqueeze(0).to(self.device), deterministic=True).flatten().cpu().numpy()
 
     def reset(self):
         pass

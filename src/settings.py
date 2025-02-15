@@ -249,6 +249,7 @@ SETTINGS = {
         "ENTROPY_COEF": 1e-4,
         "ENC_LR_SCALE": 0.3,
 
+        "USE_OWN_NOISE": True,  # If we want to use our own noise und keep use the noise from the prior
         "NOISE": _DEFAULT_NOISE,  # Which noise should we add
         "HORIZON": 3,  # How many steps do we want to consider while doing predictions
 
@@ -262,7 +263,7 @@ SETTINGS = {
         "LATENT_SIZE": 512,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
-        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-with-ddpg-strong-68 25-02-12 22_31_42_000010000.pth"),
+        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc-all-strong57 25-02-14 21_19_34_000004500.pth"),
         # which checkpoint should be used for the TD-MPC-2 Hockey agent?
     }
 }

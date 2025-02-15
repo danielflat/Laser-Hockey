@@ -10,7 +10,7 @@ import torch
 from src.agent import Agent
 from src.settings import AGENT_SETTINGS, DQN_SETTINGS, PPO_SETTINGS, MPO_SETTINGS, TD_MPC2_SETTINGS
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, HUMAN, PENDULUM, HALFCHEETAH, RANDOM_ALGO, \
-    STRONG_COMP_ALGO, \
+    SAC_ALGO, STRONG_COMP_ALGO, \
     TDMPC2_ALGO, WEAK_COMP_ALGO
 from src.util.contract import initAgent, initEnv, initSeed
 from src.util.directoryutil import get_path
@@ -49,11 +49,11 @@ Author: Daniel Flat
 
 # Settings for this class
 TEST_CHECK_POINT_NAME_PLAYER_1 = get_path(
-    "good_checkpoints/tdmpc2-after-strong-80 25-02-12 22_31_42_000005500.pth")  # Which checkpoint do you want to test
+    "good_checkpoints/sac_epoch=914999-step=2745000.ckpt")  # Which checkpoint do you want to test
 TEST_CHECK_POINT_NAME_PLAYER_2 = get_path(
-    "good_checkpoints/tdmpc2-with-ddpg-strong-68 25-02-12 22_31_42_000010000.pth")  # Which checkpoint do you want to test
+    "good_checkpoints/tdmpc-all-strong57 25-02-14 21_19_34_000004500.pth")  # Which checkpoint do you want to test
 TEST_USE_ENV = HOCKEY  # On which environment do you want to test?
-TEST_USE_ALGO_PLAYER_1 = TDMPC2_ALGO  # Which algorithm do you want to test? Can be "human" or an algo constant
+TEST_USE_ALGO_PLAYER_1 = RANDOM_ALGO  # Which algorithm do you want to test? Can be "human" or an algo constant
 TEST_USE_ALGO_PLAYER_2 = TDMPC2_ALGO  # Only Hockey: Which algorithm do you want to test for player 2? Can be "human" or an algo constant
 TEST_NUMBER_DISCRETE_ACTIONS = None  # if you want to use discrete actions or continuous. If > 0, you use the DiscreteActionWrapper
 TEST_SEED = 100000  # Set a test seed if you want to

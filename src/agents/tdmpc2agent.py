@@ -153,6 +153,7 @@ class TDMPC2Agent(Agent, nn.Module):
         self.noise = initNoise(action_shape = (self.action_size,), noise_settings = td_mpc2_settings["NOISE"],
                                device = self.device)
         self.noise_factor = td_mpc2_settings["NOISE"]["NOISE_FACTOR"]
+        self.use_own_noise = td_mpc2_settings["USE_OWN_NOISE"]
 
         self.horizon = td_mpc2_settings["HORIZON"]
         self.mmpi_iterations = td_mpc2_settings["MMPI_ITERATIONS"]
@@ -372,9 +373,13 @@ class TDMPC2Agent(Agent, nn.Module):
 
         # in training mode, we add some noise
         if not self.isEval:
-            # planned_action = planned_action + std * torch.randn(self.action_size, device = self.device)   # adding some noise based on the std.
-            planned_action = planned_action + self.noise_factor * torch.tensor(self.noise.sample(), dtype=torch.float32,
+            if self.use_own_noise:
+                planned_action = planned_action + self.noise_factor * torch.tensor(self.noise.sample(),
+                                                                                   dtype=torch.float32,
                                                                                device=self.device)  # using pink noise
+            else:
+                planned_action = planned_action + std * torch.randn(self.action_size,
+                                                                    device=self.device)  # adding some noise based on the std.
         return planned_action.clamp(self.min_action_torch, self.max_action_torch).cpu().numpy()
 
     def _update(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor,
