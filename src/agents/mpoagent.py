@@ -34,11 +34,11 @@ class Actor(nn.Module):
     If action space discrete:
     - Softmax over all possible discrete actions da
     """
-    def __init__(self, state_space, action_space, action_size, hidden_dim: int, continuous: bool, device: torch.device = None):
+    def __init__(self, state_size, action_space, action_size, hidden_dim: int, continuous: bool, device: torch.device = None):
         super().__init__()
         self.device = device if device else torch.device("cpu")
         self.continuous = continuous
-        self.ds = state_space.shape[0]
+        self.ds = state_size
         
         #shape = (1, da)
         if self.continuous:
@@ -103,6 +103,7 @@ class Actor(nn.Module):
             cholesky_vector[:, cholesky_diag_index] = F.softplus(cholesky_vector[:, cholesky_diag_index]) + 1e-6
             
             # Build Cholesky matrix
+            tril_indices = torch.tril_indices(row=self.da, col=self.da, offset=0)
             cholesky = torch.zeros(size=(B, self.da, self.da), dtype=torch.float32, device=self.device)
             
             # Fill the lower triangular matrix of the cholesky factorization defined above
@@ -135,10 +136,10 @@ class Critic(nn.Module):
     - Input layer for only the state
     - Output layer for the Q value over all possible discrete actions da
     """
-    def __init__(self, state_space, action_space, action_size, hidden_dim: int, continuous: bool):
+    def __init__(self, state_size, action_space, action_size, hidden_dim: int, continuous: bool):
         super(Critic, self).__init__()
         self.continuous = continuous
-        self.ds = state_space.shape[0]
+        self.ds = state_size
         if self.continuous:
             self.da = action_size
             # Get q value for the given action
@@ -253,10 +254,10 @@ class MPOAgent(Agent):
         self.η_Σ_kl = 0.0 
 
         # Set up the actor and critic networks
-        self.actor = Actor(state_space, action_space, self.da, self.hidden_dim, self.continuous, self.device).to(self.device)
-        self.critic = Critic(state_space, action_space, self.da, self.hidden_dim, self.continuous).to(self.device)
-        self.target_actor = Actor(state_space, action_space, self.da, self.hidden_dim, self.continuous, self.device).to(self.device)
-        self.target_critic = Critic(state_space, action_space, self.da, self.hidden_dim, self.continuous).to(self.device)
+        self.actor = Actor(self.ds, action_space, self.da, self.hidden_dim, self.continuous, self.device).to(self.device)
+        self.critic = Critic(self.ds, action_space, self.da, self.hidden_dim, self.continuous).to(self.device)
+        self.target_actor = Actor(self.ds, action_space, self.da, self.hidden_dim, self.continuous, self.device).to(self.device)
+        self.target_critic = Critic(self.ds, action_space, self.da, self.hidden_dim, self.continuous).to(self.device)
         self.target_actor.load_state_dict(self.actor.state_dict())
         self.target_critic.load_state_dict(self.critic.state_dict())
         
@@ -279,7 +280,7 @@ class MPOAgent(Agent):
         """
         return f"MPOAgent"
         
-    def act(self, state: torch.Tensor):
+    def act(self, state: torch.Tensor) -> np.ndarray:
         """
         Selects an action based on the current policy and evaluation mode. 
         :param state: (B, ds) the current state
@@ -508,8 +509,8 @@ class MPOAgent(Agent):
             # 3. Update lagrangian multipliers by gradient descent
             self.η_μ_kl -= 0.01 * (self.ε_kl_μ - kl_μ).detach().item()
             self.η_Σ_kl -= 0.01 * (self.ε_kl_Σ - kl_Σ).detach().item()
-            self.η_μ_kl = np.clip(0.0, self.η_μ_kl, 1.0)
-            self.η_Σ_kl = np.clip(0.0, self.η_Σ_kl, 1.0)
+            self.η_μ_kl = np.clip(0.0, self.η_μ_kl, 10.0)
+            self.η_Σ_kl = np.clip(0.0, self.η_Σ_kl, 10.0)
             
             # 4. Then we add the KL constraints to the loss (outer optimization loop), last eq of p.5
             loss_MLE = torch.mean(
@@ -548,7 +549,7 @@ class MPOAgent(Agent):
             
             # 3. Inner optimization loop
             self.η_kl -= 0.01 * (self.ε_kl - kl).detach().item()
-            self.η_kl = np.clip(0.0, self.η_kl, 1.0)
+            self.η_kl = np.clip(0.0, self.η_kl, 10.0)
             
             # 4. Final loss
             loss_MLE = torch.mean(qij * π_log) # (K, da)
