@@ -65,7 +65,7 @@ SETTINGS = {
 
         # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
         # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
-        "CHECKPOINT_NAME": get_path("good_checkpoints/25-01-25 14_24_21_000174500.pth"),
+        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-sac-mpo-v1 25-02-14 21_19_59_000010000.pth"),
         "CHECKPOINT_ITER": 500,  # saves a checkpoint of this model after x iterations
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
@@ -227,7 +227,7 @@ SETTINGS = {
         "KL_CONSTRAINT": 0.01, # Kl Constraint for disc AS
         "DISC_TO_CONT_TRAFO": True,
         # All other Hyperparameters are set in the MPO class
-        "CHECKPOINT_NAME": get_path("good_checkpoints/hockey_mpo_disc_icm_25-02-12 01_42_52_000090000.pth"),
+        "CHECKPOINT_NAME": get_path("good_checkpoints/mpo_with_tdmpc_2_25-02-13 23_54_44_000070000.pth"),
         # which checkpoint should be used for the MPO Hockey agent?
     },
     "TD_MPC2": {
@@ -249,7 +249,7 @@ SETTINGS = {
         "ENTROPY_COEF": 1e-4,
         "ENC_LR_SCALE": 0.3,
 
-        "USE_OWN_NOISE": True,  # If we want to use our own noise und keep use the noise from the prior
+        "USE_OWN_NOISE": False,  # If we want to use our own noise und keep use the noise from the prior
         "NOISE": _DEFAULT_NOISE,  # Which noise should we add
         "HORIZON": 3,  # How many steps do we want to consider while doing predictions
 
@@ -263,7 +263,7 @@ SETTINGS = {
         "LATENT_SIZE": 512,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
-        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc-all-strong57 25-02-14 21_19_34_000004500.pth"),
+        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-sac-mpo-v1 25-02-14 21_19_59_000010000.pth"),
         # which checkpoint should be used for the TD-MPC-2 Hockey agent?
     }
 }
