@@ -42,9 +42,6 @@ def main():
     # Initialize the environment
     env = initEnv(USE_ENV, RENDER_MODE, NUMBER_DISCRETE_ACTIONS, PROXY_REWARDS)
 
-    if USE_ENV == HOCKEY:
-        val_env = initValEnv()
-
     # Choose which algorithm to pick to initialize the agent
     agent = initAgent(USE_ALGO, env = env, device = DEVICE, agent_settings = AGENT_SETTINGS,
                       checkpoint_name = CHECKPOINT_NAME)
@@ -56,10 +53,10 @@ def main():
     agent.setMode(eval = False)  # Set the agent in training mode
     logging.info(f"The configuration was valid! Start training 💪")
 
-    opponent_pool = None
-
     # If we play Hockey, our training loop is different
     if USE_ENV == HOCKEY:
+        val_env = initValEnv()
+
         # Only in the Hockey env, we need some opponent_pool to play against
         random_agent = initAgent(use_algo = RANDOM_ALGO, env = env, device = DEVICE, checkpoint_name = None)
         weak_comp_agent = initAgent(use_algo = WEAK_COMP_ALGO, env = env, device = DEVICE, checkpoint_name = None)
@@ -90,15 +87,15 @@ def main():
         tdmpc2_agent.setMode(eval=True)
 
         opponent_pool = {
-            RANDOM_ALGO: random_agent,
-            WEAK_COMP_ALGO: weak_comp_agent,
-            STRONG_COMP_ALGO: strong_comp_agent,
+            # RANDOM_ALGO: random_agent,
+            # WEAK_COMP_ALGO: weak_comp_agent,
+            # STRONG_COMP_ALGO: strong_comp_agent,
             #DQN_ALGO: dqn_agent,
             # PPO_ALGO: ppo_agent,
-            f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
+            #f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
             # f"{TD3_ALGO}_Checkpoint": td3_agent,
-            f"{SAC_ALGO}_Checkpoint": sac_agent,
-            f"{MPO_ALGO}_Checkpoint": mpo_agent,
+            # f"{SAC_ALGO}_Checkpoint": sac_agent,
+            #f"{MPO_ALGO}_Checkpoint": mpo_agent,
             f"{TDMPC2_ALGO}_Checkpoint": tdmpc2_agent,
         }
 
@@ -125,6 +122,25 @@ def main():
         else:
             do_hockey_training(env = env, agent = agent, memory = memory, opponent_pool = copy.deepcopy(opponent_pool))
 
+        # Testing loop
+        logging.info("Training is done! Now we will do some testing!")
+        agent.setMode(eval=True)  # Set the agent in eval mode
+        # Even if we do not train on the 'simple' agents, we still want to check the performance on them
+        opponent_pool[RANDOM_ALGO] = random_agent
+        opponent_pool[WEAK_COMP_ALGO] = weak_comp_agent
+        opponent_pool[STRONG_COMP_ALGO] = strong_comp_agent
+        opponent_pool[f"{DDPG_ALGO}_Checkpoint"] = ddpg_agent
+        opponent_pool[f"{SAC_ALGO}_Checkpoint"] = sac_agent
+        opponent_pool[f"{MPO_ALGO}_Checkpoint"] = mpo_agent
+        opponent_pool[f"{TDMPC2_ALGO}_Checkpoint"] = tdmpc2_agent
+
+        # if we do self play, we have to add the self-agent to the opponent pool as well
+        if SELF_PLAY:
+            opponent_pool[USE_ALGO] = copy.deepcopy(agent)
+
+        # Finally, we do the testing
+        do_hockey_testing(env=env, agent=agent, opponent_pool=opponent_pool)
+
     # If you use another env (e.g. Pendulum), train normally
     else:
         # df: TDMPC2 and DDPG have a separate training loop because they collect whole episodes before saving them into the buffer
@@ -133,17 +149,35 @@ def main():
         else:
             do_other_env_training(env = env, agent = agent, memory = memory)
 
-    # Testing loop
-    logging.info("Training is done! Now we will do some testing!")
-    agent.setMode(eval = True)  # Set the agent in eval mode
+        # Finally some testing
+        logging.info("Training is done! Now we will do some testing!")
+        agent.setMode(eval=True)  # Set the agent in eval mode
+        do_other_env_testing(env=env, agent=agent)
+    logging.info(f"Finished! 🚀")
 
-    if USE_ALGO is not SAC_ALGO:
-        if USE_ENV == HOCKEY:
-            if SELF_PLAY:
-                opponent_pool[USE_ALGO] = copy.deepcopy(agent)
-            do_hockey_testing(env=env, agent=agent, opponent_pool=opponent_pool)
-        else:
-            do_other_env_testing(env = env, agent = agent)
+    #
+    # # Testing loop
+    # logging.info("Training is done! Now we will do some testing!")
+    # agent.setMode(eval = True)  # Set the agent in eval mode
+    #
+    # if USE_ENV == HOCKEY:
+    #     # Even if we do not train on the 'simple' agents, we still want to check the performance on them
+    #     opponent_pool[RANDOM_ALGO]: random_agent
+    #     opponent_pool[WEAK_COMP_ALGO]: weak_comp_agent
+    #     opponent_pool[STRONG_COMP_ALGO]: strong_comp_agent
+    #     opponent_pool[f"{DDPG_ALGO}_Checkpoint"]: ddpg_agent
+    #     opponent_pool[f"{SAC_ALGO}_Checkpoint"]: sac_agent
+    #     opponent_pool[f"{MPO_ALGO}_Checkpoint"]: mpo_agent
+    #     opponent_pool[f"{TDMPC2_ALGO}_Checkpoint"]: tdmpc2_agent
+    #
+    #     # if we do self play, we have to add the self-agent to the opponent pool as well
+    #     if SELF_PLAY:
+    #         opponent_pool[USE_ALGO] = copy.deepcopy(agent)
+    #
+    #     # Finally, we do the testing
+    #     do_hockey_testing(env=env, agent=agent, opponent_pool=opponent_pool)
+    # else:
+    #     do_other_env_testing(env = env, agent = agent)
     logging.info(f"Finished! 🚀")
 
 

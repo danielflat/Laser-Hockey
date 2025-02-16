@@ -362,19 +362,6 @@ class TD3Agent(Agent):
         torch.save(checkpoint, file_path)
         logging.info(f"Iteration: {iteration} TD3 checkpoint saved successfully!")
 
-    def loadModel(self, file_name: str) -> None:
-        """
-        Loads the model parameters of the agent.
-        """
-        try:
-            checkpoint = torch.load(file_name, map_location=self.device)
-            self.import_checkpoint(checkpoint)
-            logging.info(f"Model loaded successfully from {file_name}")
-        except FileNotFoundError:
-            logging.error(f"Error: File {file_name} not found.")
-        except Exception as e:
-            logging.error(f"An error occurred while loading the model: {str(e)}")
-
     def _copy_nets(self) -> None:
         assert self.use_target_net == True
         # Step 01: Copy the actor net

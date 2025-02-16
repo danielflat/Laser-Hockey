@@ -294,19 +294,6 @@ class DDPGAgent(Agent):
         torch.save(checkpoint, file_path)
         logging.info(f"Iteration: {iteration} DDPG checkpoint saved successfully!")
 
-    def loadModel(self, file_name: str) -> None:
-        """
-        Loads the model parameters of the agent.
-        """
-        try:
-            checkpoint = torch.load(file_name, map_location = self.device)
-            self.import_checkpoint(checkpoint)
-            logging.info(f"Model loaded successfully from {file_name}")
-        except FileNotFoundError:
-            logging.error(f"Error: File {file_name} not found.")
-        except Exception as e:
-            logging.error(f"An error occurred while loading the model: {str(e)}")
-
     def import_checkpoint(self, checkpoint: dict) -> None:
         self.origin_net.actor.load_state_dict(checkpoint["origin_actor"])
         self.origin_net.critic.load_state_dict(checkpoint["origin_critic"])

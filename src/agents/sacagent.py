@@ -1,3 +1,5 @@
+import logging
+
 import torch
 from torch import nn
 from torch.distributions import Normal
@@ -82,9 +84,16 @@ class SACAgent(Agent):
 
         checkpoint = torch.load(checkpoint_name, map_location=self.device)
         state_dict = checkpoint["state_dict"]
+        logging.info(f"Model for {self.__repr__()} loaded successfully from {checkpoint_name}")
         self.actor = Actor(state_dim=18, action_dim=4, num_layers=1, hidden_dim=256).to(self.device)
         actor_state_dict = {k.replace("actor.", ""): v for k, v in state_dict.items() if k.startswith("actor.")}
         self.actor.load_state_dict(actor_state_dict)
+
+    def __repr__(self):
+        """
+        For printing purposes only
+        """
+        return f"SACAgent"
 
     @torch.no_grad()
     def act(self, observation):
