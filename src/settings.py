@@ -65,7 +65,7 @@ SETTINGS = {
 
         # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
         # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
-        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-sac-mpo-v1 25-02-14 21_19_59_000010000.pth"),
+        "CHECKPOINT_NAME": None,
         "CHECKPOINT_ITER": 500,  # saves a checkpoint of this model after x iterations
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
@@ -74,10 +74,10 @@ SETTINGS = {
         "SELF_PLAY": True,  # If the agent should play against itself like in AlphaGo
         "SELF_PLAY_FREQUENCY": 1,
         # Frequency of self-play episodes. Play 1/#Number against an agent from the other pool. Play #Number-1/#Number against a version of itself
-        "SELF_PLAY_KEEP_AGENT_FREQUENCY": 5000,
+        "SELF_PLAY_KEEP_AGENT_FREQUENCY": 1000,
         # Put a checkpoint of your agent after x iterations into your opponent pool?
-        "SELF_PLAY_UPDATE_FREQUENCY": 500,  # After how many iterations do you want to hard-update the self_opponent?
-        "WEIGHTING_RULE": lambda win_rate: (1 - win_rate) + 0.1,
+        "SELF_PLAY_UPDATE_FREQUENCY": 1000,  # After how many iterations do you want to hard-update the self_opponent?
+        "WEIGHTING_RULE": lambda win_rate: 1,
         # The rule for weighting the opponents in the opponent_pool
     },
 
@@ -253,14 +253,14 @@ SETTINGS = {
         "NOISE": _DEFAULT_NOISE,  # Which noise should we add
         "HORIZON": 3,  # How many steps do we want to consider while doing predictions
 
-        "MMPI_ITERATIONS": 6,  # How many iterations of MPPI should we use for planning
+        "MMPI_ITERATIONS": 1,  # How many iterations of MPPI should we use for planning
         "NUM_TRAJECTORIES": 8,
         "NUM_SAMPLES": 256,
         "NUM_ELITES": 64,
         "MIN_STD": 0.05,
         "MAX_STD": 2,
         "TEMPERATURE": 0.5,
-        "LATENT_SIZE": 512,
+        "LATENT_SIZE": 64,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
         "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-sac-mpo-v1 25-02-14 21_19_59_000010000.pth"),

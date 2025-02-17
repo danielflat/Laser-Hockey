@@ -38,8 +38,8 @@ class EncoderNet(nn.Module):
         super().__init__()
 
         self.encoder_net = nn.Sequential(
-            NormedLinear(in_features = state_size, out_features = 256, activation_function = "Mish"),
-            NormedLinear(in_features = 256, out_features = latent_size, activation_function = "SimNorm"),
+            NormedLinear(in_features=state_size, out_features=latent_size, activation_function="Mish"),
+            NormedLinear(in_features=latent_size, out_features=latent_size, activation_function="SimNorm"),
         )
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
@@ -58,7 +58,7 @@ class DynamicsNet(nn.Module):
         self.encoder_net = nn.Sequential(
             NormedLinear(in_features = latent_size + action_size, out_features = latent_size,
                          activation_function = "Mish"),
-            NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
+            # NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
             NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "SimNorm"),
         )
 
@@ -78,7 +78,7 @@ class RewardNet(nn.Module):
         self.encoder_net = nn.Sequential(
             NormedLinear(in_features = latent_size + action_size, out_features = latent_size,
                          activation_function = "Mish"),
-            NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
+            # NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
             nn.Linear(latent_size, 1, bias = False),
         )
 
@@ -207,7 +207,6 @@ class TDMPC2Agent(Agent, nn.Module):
         self.consistency_criterion = self.initLossFunction(loss_name = td_mpc2_settings["CONSISTENCY_LOSS_FUNCTION"])
         self.reward_criterion = self.initLossFunction(loss_name = td_mpc2_settings["REWARD_LOSS_FUNCTION"])
         self.q_criterion = self.initLossFunction(loss_name = td_mpc2_settings["Q_LOSS_FUNCTION"])
-
 
         if self.USE_COMPILE:
             logging.info("Start compiling the TD-MPC2 agent.")
