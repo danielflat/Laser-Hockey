@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+from time import localtime, strftime
+
 import torch
 
 import hockey.hockey_env as h_env
@@ -12,7 +14,8 @@ from src.agents.tdmpc2agent import TDMPC2Agent
 from src.agents.mpoagent import MPOAgent
 from src.settings import AGENT_SETTINGS, DEVICE, TD_MPC2_SETTINGS, MPO_SETTINGS
 from src.util.constants import HOCKEY, TDMPC2_ALGO, MPO_ALGO
-from src.util.contract import initAgent, initEnv
+from src.util.contract import initAgent, initEnv, setupLogging
+
 
 class RandomAgent(Agent):
     """A hockey agent that simply uses random actions."""
@@ -137,6 +140,9 @@ def initialize_agent(agent_args: list[str]) -> Agent:
         help = "Which agent to use.",
     )
     args = parser.parse_args(agent_args)
+
+    model_name = strftime(f"%y-%m-%d %H_%M_%S run_client: {args.agent}", localtime())
+    setupLogging(model_name=model_name)
 
     # Initialize the agent based on the arguments.
     agent: Agent
