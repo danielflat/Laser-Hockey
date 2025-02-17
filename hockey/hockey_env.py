@@ -536,16 +536,16 @@ class HockeyEnv(gym.Env, EzPickle):
     r = self._compute_reward()
     if self.proxy_rewards:
       r += info["reward_closeness_to_puck"]
-      r += info["reward_touch_puck"]
-      r += info["reward_puck_direction"]
+      # r += info["reward_touch_puck"]
+      # r += info["reward_puck_direction"]
     return float(r)
 
   def get_reward_agent_two(self, info_two):
     r = - self._compute_reward()
     if self.proxy_rewards:
       r += info_two["reward_closeness_to_puck"]
-      r += info_two["reward_touch_puck"]
-      r += info_two["reward_puck_direction"]
+      # r += info_two["reward_touch_puck"]
+      # r += info_two["reward_puck_direction"]
     return float(r)
 
   def _get_info(self):

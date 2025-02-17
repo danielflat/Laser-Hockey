@@ -42,9 +42,9 @@ SETTINGS = {
 
         # Environment settings
         "USE_ENV": HOCKEY,  # The used environment
-        "PROXY_REWARDS": False,  # If the agent should get proxy rewards (works only with HOCKEY)
-        "APPLY_OWN_REWARD_FUNCTION": True,  # whether to apply your own reward function or the one of the environment,
-        "POST_EDIT_REWARD": True,  # whether you want to edit your rewards after an episode again or not.
+        "PROXY_REWARDS": True,  # If the agent should get proxy rewards (works only with HOCKEY)
+        "APPLY_OWN_REWARD_FUNCTION": False,  # whether to apply your own reward function or the one of the environment,
+        "POST_EDIT_REWARD": False,  # whether you want to edit your rewards after an episode again or not.
         "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
