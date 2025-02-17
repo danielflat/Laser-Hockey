@@ -9,7 +9,8 @@ import numpy as np
 import torch
 
 from src.replaymemory import ReplayMemory
-from src.settings import BUFFER_SIZE, CHECKPOINT_ITER, DEVICE, EPISODE_UPDATE_ITER, MODEL_NAME, NUM_TEST_EPISODES, \
+from src.settings import BATTLE_STATISTICS_FREQUENCY, BUFFER_SIZE, CHECKPOINT_ITER, DEVICE, EPISODE_UPDATE_ITER, \
+    MODEL_NAME, NUM_TEST_EPISODES, \
     NUM_TRAINING_EPISODES, \
     RENDER_MODE, \
     SEED, SELF_PLAY, \
@@ -361,7 +362,7 @@ def do_hockey_testing(env, agent, opponent_pool: dict):
             f"Test Iter: {i_test} | Req. Time: {episode_time:.4f} sec. | Req. Steps: {episode_durations[i_test - 1]} | Total reward: {total_reward:.4f} |"
             f" Opponent: {opponent_name}")
 
-        if i_test % 10 == 0:
+        if i_test % BATTLE_STATISTICS_FREQUENCY == 0:
             # ... You log the battle statistics of each opponent
             battle_statistics = " |\n".join([
                 f'"{key}": {{' + ", ".join(
