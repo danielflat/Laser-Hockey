@@ -8,7 +8,7 @@ from src.settings import AGENT_SETTINGS, BUFFER_SIZE, CHECKPOINT_NAME, DDPG_SETT
     MODEL_NAME, MPO_SETTINGS, NUMBER_DISCRETE_ACTIONS, PROXY_REWARDS, RENDER_MODE, SAC_SETTINGS, SEED, SELF_PLAY, \
     SETTINGS, \
     TD_MPC2_SETTINGS, USE_ALGO, USE_ENV, USE_TF32
-from src.training_loops.mpo_training import do_mpo_hockey_training
+from src.training_loops.mpo_training import do_mpo_hockey_training, do_mpo_other_env_training
 from src.training_loops.other_algos_training import do_hockey_testing, do_hockey_training, do_other_env_testing, \
     do_other_env_training
 from src.training_loops.tdmpc2_training import do_tdmpc2_hockey_training, do_tdmpc2agent_other_env_training
@@ -88,8 +88,8 @@ def main():
 
         opponent_pool = {
             # RANDOM_ALGO: random_agent,
-            # WEAK_COMP_ALGO: weak_comp_agent,
-            # STRONG_COMP_ALGO: strong_comp_agent,
+            WEAK_COMP_ALGO: weak_comp_agent,
+            STRONG_COMP_ALGO: strong_comp_agent,
             #DQN_ALGO: dqn_agent,
             # PPO_ALGO: ppo_agent,
             #f"{DDPG_ALGO}_Checkpoint": ddpg_agent,
@@ -126,13 +126,13 @@ def main():
         logging.info("Training is done! Now we will do some testing!")
         agent.setMode(eval=True)  # Set the agent in eval mode
         # Even if we do not train on the 'simple' agents, we still want to check the performance on them
-        opponent_pool[RANDOM_ALGO] = random_agent
+        # opponent_pool[RANDOM_ALGO] = random_agent
         opponent_pool[WEAK_COMP_ALGO] = weak_comp_agent
         opponent_pool[STRONG_COMP_ALGO] = strong_comp_agent
-        opponent_pool[f"{DDPG_ALGO}_Checkpoint"] = ddpg_agent
-        opponent_pool[f"{SAC_ALGO}_Checkpoint"] = sac_agent
-        opponent_pool[f"{MPO_ALGO}_Checkpoint"] = mpo_agent
-        opponent_pool[f"{TDMPC2_ALGO}_Checkpoint"] = tdmpc2_agent
+        # opponent_pool[f"{DDPG_ALGO}_Checkpoint"] = ddpg_agent
+        # opponent_pool[f"{SAC_ALGO}_Checkpoint"] = sac_agent
+        # opponent_pool[f"{MPO_ALGO}_Checkpoint"] = mpo_agent
+        # opponent_pool[f"{TDMPC2_ALGO}_Checkpoint"] = tdmpc2_agent
 
         # if we do self play, we have to add the self-agent to the opponent pool as well
         if SELF_PLAY:
@@ -146,6 +146,8 @@ def main():
         # df: TDMPC2 and DDPG have a separate training loop because they collect whole episodes before saving them into the buffer
         if USE_ALGO == TDMPC2_ALGO or USE_ALGO == DDPG_ALGO:
             do_tdmpc2agent_other_env_training(env = env, agent = agent, memory = memory)
+        if USE_ALGO == MPO_ALGO:
+            do_mpo_other_env_training(env = env, agent = agent, memory = memory)
         else:
             do_other_env_training(env = env, agent = agent, memory = memory)
 

@@ -17,7 +17,6 @@ MPO = {
     "DISC_TO_CONT_TRAFO": True, 
     # If you want the disc actions to be transformed to cont actions via the discrete_to_continous_action func
     "HIDDEM_DIM": 256,
-    "CHECKPOINT_NAME": None,
 }
 
 class Actor(nn.Module):
@@ -78,7 +77,7 @@ class Actor(nn.Module):
 
 
 class MPODestilledAgent(nn.Module):
-    def __init__(self, checkpoint_name: str, device: torch.device = torch.device("cpu"), eval=True):
+    def __init__(self, checkpoint_name: str, device: torch.device = torch.device("cpu")):
         nn.Module.__init__(self)
         
         self.device = device
