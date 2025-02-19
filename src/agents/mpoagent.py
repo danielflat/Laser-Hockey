@@ -425,9 +425,9 @@ class MPOAgent(Agent):
         qij = torch.softmax(q_target / self.η, dim=1) # (K, N) or (K, da)
         return qij
 
-    def evaluation_step(self, states: torch.Tensor) -> (torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor):
+    def expectation_step(self, states: torch.Tensor) -> (torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor):
         """
-        Evaluation step in the MPO algorithm. 
+        Expectation step in the MPO algorithm. 
         Maximization of the lower bounnd w.r.t the optimal policy by regularizing the q values towards the current best policy.
         This is done in a nonparametric way by: 
             1. Get the output of the target policy
@@ -604,9 +604,9 @@ class MPOAgent(Agent):
 
             # 2: E-Step: Finding action weights via sampling and non-parametric optimization (4.1 in paper)
             if self.continuous:
-                sampled_actions, qij, b_μ, b_A = self.evaluation_step(states)
+                sampled_actions, qij, b_μ, b_A = self.expectation_step(states)
             else:
-                _, qij, b_p, _ = self.evaluation_step(states)
+                _, qij, b_p, _ = self.expectation_step(states)
 
             # 3. M step. Policy Improvement (4.2 in paper)
             # Fitting an improved policy using the sampled q-values via gradient optimization on the Policy and the lagrangian function 

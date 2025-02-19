@@ -299,7 +299,14 @@ def do_hockey_testing(env, agent, opponent_pool: dict):
 
             # choose the action
             action = agent.act(state)
+            
+            if isinstance(action, int):
+                action = env.discrete_to_continous_action(action)
+                
             action_opponent = opponent.act(state_opponent)
+            
+            if isinstance(action_opponent, int):
+                action_opponent = env.discrete_to_continous_action(action_opponent)
 
             # perform the action
             next_state, reward, terminated, truncated, info = env.step(np.hstack([action, action_opponent]))

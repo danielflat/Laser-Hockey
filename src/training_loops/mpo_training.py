@@ -1,4 +1,6 @@
 import logging
+import json
+import os
 import numpy as np
 
 import random
@@ -22,14 +24,143 @@ from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, 
     TD3_ALGO, TDMPC2_ALGO, WEAK_COMP_ALGO, MPO_ALGO
 from src.util.contract import initAgent, initEnv, initValEnv, initSeed, setupLogging
 from src.util.plotutil import plot_training_metrics, plot_mpo_training_metrics, plot_mpo_intrinsic_rewards
+from src.util.directoryutil import get_path
 
+def save_training_metrics(results: dict, model_name: str, iteration: int):
+    """
+    Saves training metrics into a JSON file
+    """
+
+    # Define the directory and file path
+    directory = get_path(f"output/json_files")
+    file_path = os.path.join(directory, f"{model_name}_{iteration:09}.json")
+
+    # Ensure the directory exists
+    os.makedirs(directory, exist_ok=True)
+
+    with open(file_path, "w") as f:
+        json.dump(results, f)
+
+    logging.info(f"Model {model_name} saved successfully into json file!")
+
+def do_mpo_other_env_training(env, agent, memory):
+    all_rewards = []
+    all_intrinsic_rewards = []
+    all_steps = []
+    all_critics_losses = []
+    all_actor_losses = []
+    all_kl = []
+    all_kl_µ = []
+    all_kl_Σ = []
+    
+    state, info = env.reset(seed = SEED)
+    
+    total_steps = 0
+    total_episodes = 0
+    
+    for i_training in range(1, NUM_TRAINING_EPISODES + 1):
+        # We track for each episode how high the reward was
+        total_reward = 0
+        total_intrinsic_reward = 0
+        total_episodes += 1
+
+        # Convert state to torch
+        state = torch.from_numpy(state).to(DEVICE).to(dtype = torch.float32)
+
+        # We start an episode
+        for step in count(start = 1):
+            # choose the action
+            action = agent.act(state)
+
+            # perform the action
+            next_state, reward, terminated, truncated, info = env.step(action)
+
+            # track the total reward
+            total_reward += reward
+
+            # Convert quantities into tensors
+            action = torch.tensor(action, device = DEVICE, dtype = torch.float32)
+            reward = torch.tensor(reward, device = DEVICE, dtype = torch.float32)
+            done = torch.tensor(terminated or truncated, device = DEVICE,
+                                dtype = torch.int)  # to be able to do arithmetics with the done signal, we need an int
+            next_state = torch.from_numpy(next_state).to(device = DEVICE, dtype = torch.float32)
+            
+            # Adjust the reward using intrinsic curiosity module
+            if CURIOSITY is not None:
+                intrinsic_reward = agent.icm.compute_intrinsic_reward(state, next_state, action_agent)
+                reward = reward + CURIOSITY * intrinsic_reward
+                total_intrinsic_reward += intrinsic_reward.detach().cpu().numpy()
+
+            # Store this transition in the memory
+            memory.push(state, action, reward, next_state, done, info)
+
+            # Update the state
+            state = next_state
+            if done:
+                break
+
+        # after each episode, we want to log some statistics
+        all_rewards.append(total_reward)
+        all_intrinsic_rewards.append(total_intrinsic_reward)
+        all_steps.append(step)
+
+        # Optimization of the agent
+        if i_training % EPISODE_UPDATE_ITER == 0 and len(memory) >= 100 * BATCH_SIZE:
+            losses = agent.optimize(memory = memory, episode_i = i_training)
+
+            # Logging of the episode
+            if DISCRETE:
+                logging.info(
+                    f"Training Iter: {i_training} | Req. Steps: {step} | Reward: {total_reward:.4f} |"
+                    f" Critic Loss: {losses[0]:.4f} | Actor Loss: {losses[1]:.4f} |"
+                    f" KL-D: {losses[2]:.4f}"
+                )
+                all_critics_losses.append(losses[0])
+                all_actor_losses.append(losses[1])
+                all_kl.append(losses[2])
+            else:
+                logging.info(
+                    f"Training Iter: {i_training} | Req. Steps: {step} | Reward: {total_reward:.4f} |"
+                    f" Critic Loss: {losses[0]:.4f} | Actor Loss: {losses[1]:.4f}"
+                    f" KL-D Mean: {losses[2]:.4f} | KL-D Var: {losses[3]:.4f}"
+                    )
+                all_critics_losses.append(losses[0])
+                all_actor_losses.append(losses[1])
+                all_kl_µ.append(losses[2])
+                all_kl_Σ.append(losses[3])
+
+        # Plot every 100 episodes
+        if SHOW_PLOTS and i_training % 100 == 0:
+            plot_training_metrics(episode_durations = episodes_durations, episode_rewards = episodes_rewards,
+                                  episode_losses = episodes_losses, current_episode = i_training,
+                                  episode_update_iter = EPISODE_UPDATE_ITER)
+
+        # after some time, we save a checkpoint of our model
+        if (i_training % CHECKPOINT_ITER == 0):
+            agent.saveModel(MODEL_NAME, i_training)
+
+        # reset the environment
+        state, info = env.reset(
+            seed = SEED + i_training) 
+        
+    results = {
+        "all_rewards": all_rewards,
+        "all_intrinsic_rewards": all_intrinsic_rewards,
+        "all_steps": all_steps,
+        "all_critic_losses": all_critics_losses,
+        "all_actor_losses": all_actor_losses,
+        "all_kl": all_kl,
+        "all_kl_µ": all_kl_µ,
+        "all_kl_Σ": all_kl_Σ,
+    }
+    
+    # Save the results in json file
+    save_training_metrics(results, MODEL_NAME, NUM_TRAINING_EPISODES)
+    
+    return results
+
+    
 def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, self_opponent = Agent):
-    """
-    Training function for MPO agent in the hockey environment
-    
-    Author: Andre Pfrommer
-    """
-    
     logging.info("Starting MPO Hockey training!")
 
     all_rewards           = []
@@ -108,6 +239,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             next_state = torch.tensor(next_state, device = DEVICE, dtype = torch.float32)
             next_state_opp = torch.tensor(next_state_opp, device = DEVICE, dtype = torch.float32)
             
+            # Adjust the reward using intrinsic curiosity module
             if CURIOSITY is not None:
                 intrinsic_reward = agent.icm.compute_intrinsic_reward(state, next_state, action_agent)
                 reward = reward + CURIOSITY * intrinsic_reward
@@ -116,7 +248,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             # Store transitions in replay buffer
             memory.push(state, action_agent, reward, next_state, done, info)
 
-            #Update the states of agent and opponent
+            # Update the states of agent and opponent
             state = next_state
             state_opponent = next_state_opp
             
@@ -145,7 +277,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
                         f"CriticLoss={losses[0]:.3f}, ActorLoss={losses[1]:.3f}, "
                         f"KL-D={losses[2]:.3f}"
                     )
-                # Saving these losses and lagrangians
+                # Saving these losses and kl divergences
                 all_critic_losses.append(losses[0])
                 all_actor_losses.append(losses[1])
                 all_kl.append(losses[2])
@@ -156,7 +288,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
                     f"CriticLoss={losses[0]:.3f}, ActorLoss={losses[1]:.3f}, "
                     f"KL-D Mean={losses[2]:.3f}, KL-D Var={losses[3]:.3f}"
                 )
-                # Saving these losses and lagrangians
+                # Saving these losses and kl divergences
                 all_critic_losses.append(losses[0])
                 all_actor_losses.append(losses[1])
                 all_kl_µ.append(losses[2])
@@ -177,7 +309,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             assert CHECKPOINT_ITER % EPISODE_UPDATE_ITER == 0, "Checkpointing freq should be larger than update freq!"
             
             # Validation
-            opponent_metrics = validate_mpo_hockey(agent, val_env, opponent_pool, num_episodes=500, 
+            opponent_metrics = validate_mpo_hockey(agent, val_env, opponent_pool, num_episodes=10, 
                                                    seed_offset=SEED + total_episodes)
             val_opponent_metrics.append(opponent_metrics)
             
@@ -195,8 +327,24 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
 
     logging.info("Finished MPO training!")
     
-    # Returning all the stats if desired
-    return all_rewards, all_intrinsic_rewards, all_wins, all_critic_losses, all_actor_losses, all_kl_µ, all_kl_Σ, val_opponent_metrics
+    results = {
+    "all_rewards": all_rewards,
+    "all_intrinsic_rewards": all_intrinsic_rewards,
+    "all_wins": all_wins,
+    "all_steps": all_steps,
+    "all_critic_losses": all_critic_losses,
+    "all_actor_losses": all_actor_losses,
+    "all_kl": all_kl,
+    "all_kl_µ": all_kl_µ,
+    "all_kl_Σ": all_kl_Σ,
+    "val_opponent_metrics": val_opponent_metrics,
+    }
+    
+    # Save the results in json file
+    save_training_metrics(results, MODEL_NAME, total_episodes)
+        
+    return results
+    
 
 def validate_mpo_hockey(agent, val_env, opponent_pool: dict, num_episodes: int, seed_offset: int = 0):
     """
