@@ -65,7 +65,7 @@ SETTINGS = {
 
         # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
         # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
-        "CHECKPOINT_NAME": None,
+        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-v2-all-i3 25-02-18 20_02_17_000010000.pth"),
         "CHECKPOINT_ITER": 500,  # saves a checkpoint of this model after x iterations
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
@@ -251,7 +251,7 @@ SETTINGS = {
 
         "USE_OWN_NOISE": False,  # If we want to use our own noise und keep use the noise from the prior
         "NOISE": _DEFAULT_NOISE,  # Which noise should we add
-        "HORIZON": 3,  # How many steps do we want to consider while doing predictions
+        "HORIZON": 1,  # How many steps do we want to consider while doing predictions
 
         "MMPI_ITERATIONS": 1,  # How many iterations of MPPI should we use for planning
         "NUM_TRAJECTORIES": 8,
@@ -263,7 +263,7 @@ SETTINGS = {
         "LATENT_SIZE": 64,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
-        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-sac-mpo-v1 25-02-14 21_19_59_000010000.pth"),
+        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-v2-all-i3 25-02-18 20_02_17_000010000.pth"),
         # which checkpoint should be used for the TD-MPC-2 Hockey agent?
     }
 }
