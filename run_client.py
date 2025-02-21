@@ -38,7 +38,7 @@ class HockeyAgent(Agent):
     def __init__(self, weak: bool) -> None:
         super().__init__()
 
-        self.hockey_agent = h_env.BasicOpponent(weak = weak)
+        self.hockey_agent = h_env.BasicOpponent(weak=weak)
 
     def get_step(self, observation: list[float]) -> list[float]:
         # NOTE: If your agent is using discrete actions (0-7), you can use
@@ -69,14 +69,14 @@ class TDMPC2ServerAgent(Agent):
         self.game_won = 0  # tracks how many games have been won in the session
         self.game_lost = 0  # tracks how many games have been lost in the session
 
-        self.env = initEnv(use_env = HOCKEY, render_mode = None, number_discrete_actions = None, proxy_rewards = False)
-        self.agent = initAgent(use_algo = TDMPC2_ALGO, env = self.env,
+        self.env = initEnv(use_env=HOCKEY, render_mode=None, number_discrete_actions=None, proxy_rewards=False)
+        self.agent = initAgent(use_algo=TDMPC2_ALGO, env=self.env,
                                checkpoint_name=TD_MPC2_SETTINGS["CHECKPOINT_NAME"], device=DEVICE)
         # set the agent into eval mode
-        self.agent.setMode(eval = True)
+        self.agent.setMode(eval=True)
 
     def get_step(self, observation: list[float]) -> list[float]:
-        state = torch.tensor(observation, dtype = torch.float32).to(DEVICE)
+        state = torch.tensor(observation, dtype=torch.float32).to(DEVICE)
         action = self.agent.act(state)
         return action.tolist()  # tolist(), since the server requires a list[float]
 
@@ -97,21 +97,22 @@ class TDMPC2ServerAgent(Agent):
             self.game_lost += 1
         print(
             f"Games played: {self.game_count} | Games won: {self.game_won} | Games lost: {self.game_lost} | Win rate: {self.game_won / self.game_count} | Loss rate: {self.game_lost / self.game_count}")
-        
+
+
 class MPOServerAgent(Agent):
     def __init__(self) -> None:
         super().__init__()
-        self.env = initEnv(use_env = HOCKEY, render_mode = None, number_discrete_actions = None, proxy_rewards = False)
-        self.agent = initAgent(use_algo = MPO_ALGO, env = self.env,
-                               checkpoint_name = MPO_SETTINGS["CHECKPOINT_NAME"], device = DEVICE)
-        self.agent.setMode(eval = True)
+        self.env = initEnv(use_env=HOCKEY, render_mode=None, number_discrete_actions=None, proxy_rewards=False)
+        self.agent = initAgent(use_algo=MPO_ALGO, env=self.env,
+                               checkpoint_name=MPO_SETTINGS["CHECKPOINT_NAME"], device=DEVICE)
+        self.agent.setMode(eval=True)
 
     def get_step(self, observation: list[float]) -> list[float]:
-        state = torch.tensor(observation, dtype = torch.float32).to(DEVICE)
+        state = torch.tensor(observation, dtype=torch.float32).to(DEVICE)
         action = self.agent.act(state)
         if isinstance(action, int):
             action = self.env.discrete_to_continous_action(action)
-        return action  
+        return action
 
     def on_start_game(self, game_id) -> None:
         self.agent.reset()
@@ -132,10 +133,10 @@ def initialize_agent(agent_args: list[str]) -> Agent:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--agent",
-        type = str,
+        type=str,
         choices=["weak", "strong", "random", "mpo", "tdmpc2"],
-        default = "weak",
-        help = "Which agent to use.",
+        default="weak",
+        help="Which agent to use.",
     )
     args = parser.parse_args(agent_args)
 
@@ -145,9 +146,9 @@ def initialize_agent(agent_args: list[str]) -> Agent:
     # Initialize the agent based on the arguments.
     agent: Agent
     if args.agent == "weak":
-        agent = HockeyAgent(weak = True)
+        agent = HockeyAgent(weak=True)
     elif args.agent == "strong":
-        agent = HockeyAgent(weak = False)
+        agent = HockeyAgent(weak=False)
     elif args.agent == "random":
         agent = RandomAgent()
     elif args.agent == "tdmpc2":
