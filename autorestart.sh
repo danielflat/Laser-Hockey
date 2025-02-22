@@ -22,17 +22,18 @@ NTFY_TOPIC=
 
 # You may set the server information here, then you don't need to pass it as
 # argument.
-export COMPRL_SERVER_URL=comprl.cs.uni-tuebingen.de
-export COMPRL_SERVER_PORT=65335
-export COMPRL_ACCESS_TOKEN=e9f73eba-6057-440a-a0f9-7310200ffa42
-export COMPRL_AGENT=tdmpc2
+# df: INSERT THE CREDENTIALS HERE
+export COMPRL_SERVER_URL=...
+export COMPRL_SERVER_PORT=...
+export COMPRL_ACCESS_TOKEN=...
+export COMPRL_AGENT=... #either mpo or tdmpc2
 
 # Array to hold timestamps of terminations
 termination_times=()
 
 while true; do
     # Run the command foobar
-    python3 ./run_client.py "$@"
+    python3 ./run_client.py --server-url $COMPRL_SERVER_URL --server-port $COMPRL_SERVER_PORT --token $COMPRL_ACCESS_TOKEN --args --agent $COMPRL_AGENT
 
     # Get the current timestamp
     current_time=$(date +%s)

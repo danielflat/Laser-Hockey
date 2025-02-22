@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from time import localtime, strftime
 
 import torch
@@ -134,7 +135,7 @@ def initialize_agent(agent_args: list[str]) -> Agent:
         "--agent",
         type = str,
         choices=["weak", "strong", "random", "mpo", "tdmpc2"],
-        default = "weak",
+        default="tdmpc2",
         help = "Which agent to use.",
     )
     args = parser.parse_args(agent_args)
@@ -156,6 +157,8 @@ def initialize_agent(agent_args: list[str]) -> Agent:
         agent = MPOServerAgent()
     else:
         raise ValueError(f"Unknown agent: {args.agent}")
+
+    print(f"Chosen agent: {agent}")
 
     # And finally return the agent.
     return agent

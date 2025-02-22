@@ -158,6 +158,8 @@ def initialize_agent(agent_args: list[str]) -> Agent:
     else:
         raise ValueError(f"Unknown agent: {args.agent}")
 
+    print(f"Initialized agent: {agent}")
+
     # And finally return the agent.
     return agent
 
