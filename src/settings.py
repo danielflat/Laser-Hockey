@@ -4,7 +4,9 @@ This is the config file for the training run main.py.
 import torch
 from time import localtime, strftime
 
-from src.util.constants import ADAM, ADAMW, DDPG_ALGO, DQN_ALGO, EXPONENTIAL, HOCKEY, MSE_LOSS, PENDULUM, PINK_NOISE, \
+from src.util.constants import ADAM, ADAMW, DDPG_ALGO, DQN_ALGO, EXPONENTIAL, HALFCHEETAH, HOCKEY, HUMAN, MSE_LOSS, \
+    PENDULUM, \
+    PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
 from src.util.directoryutil import get_path
 
@@ -41,7 +43,7 @@ SETTINGS = {
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
 
         # Environment settings
-        "USE_ENV": HOCKEY,  # The used environment
+        "USE_ENV": HALFCHEETAH,  # The used environment
         "PROXY_REWARDS": True,  # If the agent should get proxy rewards (works only with HOCKEY)
         "APPLY_OWN_REWARD_FUNCTION": False,  # whether to apply your own reward function or the one of the environment,
         "POST_EDIT_REWARD": False,  # whether you want to edit your rewards after an episode again or not.
@@ -65,7 +67,7 @@ SETTINGS = {
 
         # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
         # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
-        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-v2-all-i3 25-02-18 20_02_17_000010000.pth"),
+        "CHECKPOINT_NAME": None,
         "CHECKPOINT_ITER": 500,  # saves a checkpoint of this model after x iterations
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
@@ -191,7 +193,7 @@ SETTINGS = {
         # which checkpoint should be used for the TD3 Hockey agent?
     },
     "SAC": {
-        "CHECKPOINT_NAME": get_path("good_checkpoints/sac_epoch=914999-step=2745000.ckpt"),
+        "CHECKPOINT_NAME": get_path("final_checkpoints/sac_v4 epoch=2099999-step=6300000.ckpt"),
     },
     "MPO": {
         "ACTOR": {
@@ -227,7 +229,7 @@ SETTINGS = {
         "KL_CONSTRAINT": 0.01, # Kl Constraint for disc AS
         "DISC_TO_CONT_TRAFO": True,
         # All other Hyperparameters are set in the MPO class
-        "CHECKPOINT_NAME": get_path("good_checkpoints/mpo_with_tdmpc_2_25-02-13 23_54_44_000070000.pth"),
+        "CHECKPOINT_NAME": get_path("final_checkpoints/mpo_with_tdmpc_2_sac_v3.pth"),
         # which checkpoint should be used for the MPO Hockey agent?
     },
     "TD_MPC2": {
@@ -249,7 +251,7 @@ SETTINGS = {
         "ENTROPY_COEF": 1e-4,
         "ENC_LR_SCALE": 0.3,
 
-        "USE_OWN_NOISE": False,  # If we want to use our own noise und keep use the noise from the prior
+        "USE_OWN_NOISE": True,  # If we want to use our own noise und keep use the noise from the prior
         "NOISE": _DEFAULT_NOISE,  # Which noise should we add
         "HORIZON": 1,  # How many steps do we want to consider while doing predictions
 
@@ -263,7 +265,7 @@ SETTINGS = {
         "LATENT_SIZE": 64,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
-        "CHECKPOINT_NAME": get_path("good_checkpoints/tdmpc2-v2-all-i3 25-02-18 20_02_17_000010000.pth"),
+        "CHECKPOINT_NAME": get_path("final_checkpoints/tdmpc2-v2-all-i5 25-02-20 17_44_47_000046000.pth"),
         # which checkpoint should be used for the TD-MPC-2 Hockey agent?
     }
 }

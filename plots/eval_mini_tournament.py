@@ -22,13 +22,13 @@ import hockey.hockey_env as h_env
 
 # Settings for this class
 BEST_TDMPC2_CHECKPOINT = get_path(
-    "good_checkpoints/tdmpc2-v2-all-i4.5-unfinished 25-02-20 17_44_47_000011500.pth")  # Which checkpoint do you want to test
+    "final_checkpoints/tdmpc2-v2-all-i5 25-02-20 17_44_47_000046000.pth")  # Which checkpoint do you want to test
 BEST_SAC_CHECKPOINT = get_path(
-    "good_checkpoints/epoch=2349999-step=7050000.ckpt")  # Which checkpoint do you want to test
+    "final_checkpoints/sac_v4 epoch=2099999-step=6300000.ckpt")  # Which checkpoint do you want to test
 BEST_MPO_CHECKPOINT = get_path(
-    "good_checkpoints/mpo_with_tdmpc_2_sac_v2_25-02-19 10_48_37_000030000.pth")  # Which checkpoint do you want to test
+    "final_checkpoints/mpo_with_tdmpc_2_sac_v3.pth")  # Which checkpoint do you want to test
 TOURNAMENT_RESULTS_FILE_NAME = get_path("plots/eval_mini_tournament_results.tex")
-NUM_GAMES_PER_MATCH = 1  # The number of games each pair is playing against
+NUM_GAMES_PER_MATCH = 10  # The number of games each pair is playing against
 TABLE_CAPTION = "Pair-wise Evaluation of out Agents"
 
 TOURNAMENT_USE_ENV = HOCKEY  # On which environment do you want to test?

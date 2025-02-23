@@ -44,7 +44,7 @@ def do_tdmpc2agent_other_env_training(env, agent, memory):
         all_infos = []
 
         # Convert state to torch
-        state = torch.from_numpy(state).to(DEVICE).to(dtype = torch.float32)
+        state = torch.tensor(state, dtype=torch.float32, device=DEVICE)
 
         for step in count(start = 1):
             # choose the action
@@ -61,7 +61,7 @@ def do_tdmpc2agent_other_env_training(env, agent, memory):
             reward = torch.tensor(reward, device = DEVICE, dtype = torch.float32)
             done = torch.tensor(terminated or truncated, device = DEVICE,
                                 dtype = torch.int)  # to be able to do arithmetics with the done signal, we need an int
-            next_state = torch.from_numpy(next_state).to(device = DEVICE)
+            next_state = torch.tensor(next_state, dtype=torch.float32, device=DEVICE)
 
             # We keep track of the episode
             all_states.append(state)
