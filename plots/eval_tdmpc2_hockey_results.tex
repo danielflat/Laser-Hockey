@@ -1,0 +1,17 @@
+\begin{table}[h]
+    \centering
+    \resizebox{\columnwidth}{!}{%
+        \begin{tabular}{rllrrrrrl}
+            \toprule
+            Match Number & Player 1    & Player 2    & Number of Games & Avg. Game Length & Player 1 won & Player 2 won & Number of Draws & Who won? \\
+            \midrule
+            1            & TDMPC2Agent & RandomAgent & 1000            & 132.11           & 653          & 28           & 319             & TDMPC2Agent \\
+            2            & TDMPC2Agent & WeakAgent   & 1000            & 129.22           & 885          & 10           & 105             & TDMPC2Agent \\
+            3            & TDMPC2Agent & StrongAgent & 1000            & 148.81           & 703          & 32           & 265             & TDMPC2Agent \\
+            4            & TDMPC2Agent & DDPGAgent   & 1000            & 114.87           & 748          & 43           & 209             & TDMPC2Agent \\
+            \bottomrule
+        \end{tabular}
+    }
+    \caption{TD-MPC2 hockey performance against standard opponents}
+    \label{tab:eval_tdmpc2_hockey}
+\end{table}
