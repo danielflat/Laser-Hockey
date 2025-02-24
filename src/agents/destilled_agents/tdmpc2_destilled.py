@@ -24,16 +24,16 @@ TDMPC2 = {
     "ENTROPY_COEF": 1e-4,
     "ENC_LR_SCALE": 0.3,
 
-    "HORIZON": 3,  # How many steps do we want to consider while doing predictions
+    "HORIZON": 1,  # How many steps do we want to consider while doing predictions
 
-    "MMPI_ITERATIONS": 6,  # How many iterations of MPPI should we use for planning
+    "MMPI_ITERATIONS": 1,  # How many iterations of MPPI should we use for planning
     "NUM_TRAJECTORIES": 8,
     "NUM_SAMPLES": 256,
     "NUM_ELITES": 64,
     "MIN_STD": 0.05,
     "MAX_STD": 2,
     "TEMPERATURE": 0.5,
-    "LATENT_SIZE": 512,
+    "LATENT_SIZE": 64,
     "LOG_STD_MIN": -10,
     "LOG_STD_MAX": 2,
     # which checkpoint should be used for the TD-MPC-2 Hockey agent?
@@ -45,8 +45,8 @@ class EncoderNet(nn.Module):
         super().__init__()
 
         self.encoder_net = nn.Sequential(
-            NormedLinear(in_features=state_size, out_features=256, activation_function="Mish"),
-            NormedLinear(in_features=256, out_features=latent_size, activation_function="SimNorm"),
+            NormedLinear(in_features=state_size, out_features=latent_size, activation_function="Mish"),
+            NormedLinear(in_features=latent_size, out_features=latent_size, activation_function="SimNorm"),
         )
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
@@ -57,6 +57,7 @@ class EncoderNet(nn.Module):
         return latent_state
 
 
+# TODO
 class DynamicsNet(nn.Module):
     def __init__(self, latent_size: int, action_size: int):
         super().__init__()
@@ -64,7 +65,7 @@ class DynamicsNet(nn.Module):
         self.encoder_net = nn.Sequential(
             NormedLinear(in_features=latent_size + action_size, out_features=latent_size,
                          activation_function="Mish"),
-            NormedLinear(in_features=latent_size, out_features=latent_size, activation_function="Mish"),
+            # NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
             NormedLinear(in_features=latent_size, out_features=latent_size, activation_function="SimNorm"),
         )
 
@@ -84,7 +85,7 @@ class RewardNet(nn.Module):
         self.encoder_net = nn.Sequential(
             NormedLinear(in_features=latent_size + action_size, out_features=latent_size,
                          activation_function="Mish"),
-            NormedLinear(in_features=latent_size, out_features=latent_size, activation_function="Mish"),
+            # NormedLinear(in_features = latent_size, out_features = latent_size, activation_function = "Mish"),
             nn.Linear(latent_size, 1, bias=False),
         )
 
