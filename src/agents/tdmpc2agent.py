@@ -406,7 +406,6 @@ class TDMPC2Agent(Agent, nn.Module):
             consistency_loss += _discount * self.consistency_criterion(_latent_state, _next_latent_state)
             _discount *= self.discount
         prediction_rollout = torch.stack(prediction_rollout, dim = 1)
-        # prediction_rollout = self._rollout(latent_state[:, 0], action)
 
         # Step 04: We predict the q_value and the reward of the last rollout
         _prediction_rollout = prediction_rollout[:, :-1]  # we throw away the last latent rollout to do predictions

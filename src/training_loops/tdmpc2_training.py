@@ -1,4 +1,6 @@
 import logging
+from copy import deepcopy
+
 import numpy as np
 import random
 import time
@@ -24,13 +26,13 @@ from src.util.contract import initAgent, initEnv, initValEnv, initSeed, setupLog
 from src.util.plotutil import plot_training_metrics, plot_sac_training_metrics, plot_sac_validation_metrics
 
 
-def do_tdmpc2agent_other_env_training(env, agent, memory):
+def do_tdmpc2agent_other_env_training(env, agent, memory, seed=SEED):
     episodes_durations = []
     episodes_rewards = []
     episode_training_statistics = []
     episodes_losses = []  # TODO: CURRENTLY NOT USED ANYMORE
 
-    state, info = env.reset(seed = SEED)
+    state, info = env.reset(seed=seed)
 
     for i_training in range(1, NUM_TRAINING_EPISODES + 1):
         # We track for each episode how high the reward was
@@ -112,20 +114,22 @@ def do_tdmpc2agent_other_env_training(env, agent, memory):
 
         # reset the environment
         state, info = env.reset(
-            seed = SEED + i_training)  # by resetting always a different but predetermined seed, we ensure the reproducibility of the results
+            seed=seed + i_training)  # by resetting always a different but predetermined seed, we ensure the reproducibility of the results
 
 
-def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_opponent: Agent):
+def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_opponent: Agent,
+                              num_training_episodes=NUM_TRAINING_EPISODES, seed=SEED):
     episode_durations = []
     episode_rewards = []
     episode_training_statistics = []
+    episode_opponent_statistics = []
 
     if SELF_PLAY:
         # create a dict for the self component for logging statistics
         self_statistics = {
-            "WIN_RATE": 0.5,  # Start with 50% win rate for each opponent
+            "WIN_RATE": 0.0,  # Start with 50% win rate for each opponent
             "DRAW_RATE": 0.0,
-            "LOSE_RATE": 0.5,
+            "LOSE_RATE": 0.0,
 
             # Currently it is not used so much. But an interesting quantity to log with us
             "NUM_GAMES": 0,
@@ -140,9 +144,9 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
     opponent_statistics = {
         f"{opponent}": {
             # has to sum up to 1
-            "WIN_RATE": 0.5,  # Start with 50% win rate for each opponent
+            "WIN_RATE": 0.0,  # Start with 50% win rate for each opponent
             "DRAW_RATE": 0.0,
-            "LOSE_RATE": 0.5,
+            "LOSE_RATE": 0.0,
 
             # Currently it is not used so much. But an interesting quantity to log with us
             "NUM_GAMES": 0,
@@ -155,7 +159,7 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
         for opponent in opponent_pool.keys()
     }
 
-    for i_training in range(1, NUM_TRAINING_EPISODES + 1):
+    for i_training in range(1, num_training_episodes + 1):
         # We track for each episode how high the reward was
         t_start = time.time()
 
@@ -185,7 +189,7 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
             opponent = opponent_pool[opponent_name]
 
         # For reproducibility of the training, we use predefined seeds
-        state, info = env.reset(seed = SEED + i_training - 1)
+        state, info = env.reset(seed=seed + i_training - 1)
 
         # we reset the agents for the new episode
         agent.reset()
@@ -282,6 +286,8 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
                                                        "NUM_GAMES_LOSE"] / \
                                                    opponent_stat_entry["NUM_GAMES"]
 
+                episode_opponent_statistics.append(deepcopy(opponent_statistics))
+
                 # ... Step 03: end this episode
                 break
 
@@ -320,9 +326,9 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
                 opponent_pool[f"{USE_ALGO}_{i_training}"] = copy.deepcopy(self_opponent)
                 opponent_statistics[f"{USE_ALGO}_{i_training}"] = copy.deepcopy(self_statistics)
                 self_statistics = {
-                    "WIN_RATE": 0.5,  # Start with 50% win rate for each opponent
+                    "WIN_RATE": 0.0,  # Start with 50% win rate for each opponent
                     "DRAW_RATE": 0.0,
-                    "LOSE_RATE": 0.5,
+                    "LOSE_RATE": 0.0,
 
                     # Currently it is not used so much. But an interesting quantity to log with us
                     "NUM_GAMES": 0,
@@ -371,3 +377,5 @@ def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_oppo
         # Frequently after some episodes, we save a checkpoint of our model
         if (i_training % CHECKPOINT_ITER == 0):
             agent.saveModel(MODEL_NAME, i_training)
+
+    return episode_durations, episode_rewards, episode_training_statistics, episode_opponent_statistics

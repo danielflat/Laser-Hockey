@@ -4,7 +4,8 @@ This is the config file for the training run main.py.
 import torch
 from time import localtime, strftime
 
-from src.util.constants import ADAM, ADAMW, DDPG_ALGO, DQN_ALGO, EXPONENTIAL, HALFCHEETAH, HOCKEY, HUMAN, MSE_LOSS, \
+from src.util.constants import ADAM, ADAMW, DDPG_ALGO, DQN_ALGO, EXPONENTIAL, HALFCHEETAH, HOCKEY, HUMAN, LUNARLANDER, \
+    MSE_LOSS, \
     PENDULUM, \
     PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
@@ -43,11 +44,11 @@ SETTINGS = {
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
 
         # Environment settings
-        "USE_ENV": HALFCHEETAH,  # The used environment
+        "USE_ENV": HOCKEY,  # The used environment
         "PROXY_REWARDS": True,  # If the agent should get proxy rewards (works only with HOCKEY)
         "APPLY_OWN_REWARD_FUNCTION": False,  # whether to apply your own reward function or the one of the environment,
         "POST_EDIT_REWARD": False,  # whether you want to edit your rewards after an episode again or not.
-        "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
+        "RENDER_MODE": HUMAN,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
         "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
@@ -67,7 +68,7 @@ SETTINGS = {
 
         # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
         # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
-        "CHECKPOINT_NAME": None,
+        "CHECKPOINT_NAME": get_path("final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth"),
         "CHECKPOINT_ITER": 500,  # saves a checkpoint of this model after x iterations
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints
@@ -76,9 +77,9 @@ SETTINGS = {
         "SELF_PLAY": True,  # If the agent should play against itself like in AlphaGo
         "SELF_PLAY_FREQUENCY": 1,
         # Frequency of self-play episodes. Play 1/#Number against an agent from the other pool. Play #Number-1/#Number against a version of itself
-        "SELF_PLAY_KEEP_AGENT_FREQUENCY": 1000,
+        "SELF_PLAY_KEEP_AGENT_FREQUENCY": 100000,
         # Put a checkpoint of your agent after x iterations into your opponent pool?
-        "SELF_PLAY_UPDATE_FREQUENCY": 1000,  # After how many iterations do you want to hard-update the self_opponent?
+        "SELF_PLAY_UPDATE_FREQUENCY": 100000,  # After how many iterations do you want to hard-update the self_opponent?
         "WEIGHTING_RULE": lambda win_rate: 1,
         # The rule for weighting the opponents in the opponent_pool
     },
@@ -156,7 +157,7 @@ SETTINGS = {
             "LOSS_FUNCTION": MSE_LOSS,
         },
         "NOISE": _DEFAULT_NOISE,
-        "CHECKPOINT_NAME": get_path("good_checkpoints/hockey_ddpg_smoothl1_25-01-22 17_36_56_100000.pth"),
+        "CHECKPOINT_NAME": get_path("final_checkpoints/hockey_ddpg_smoothl1_25-01-22 17_36_56_100000.pth"),
         # which checkpoint should be used for the DDPG Hockey agent?
     },
     # The specific settings for the TD3 agent
@@ -189,8 +190,7 @@ SETTINGS = {
         "NUM_LAYERS": 5,  # num hidden layers, only changed if target_net == false
         "BATCHNORM_MOMENTUM": 0.9,  # momentum for batchnorm, only used if target_net == false
         "NOISE": _DEFAULT_NOISE,
-        "CHECKPOINT_NAME": get_path("good_checkpoints/hockey_ddpg_smoothl1_25-01-22 17_36_56_100000.pth"),
-        # which checkpoint should be used for the TD3 Hockey agent?
+        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the TD3 Hockey agent?
     },
     "SAC": {
         "CHECKPOINT_NAME": get_path("final_checkpoints/sac_v4 epoch=2099999-step=6300000.ckpt"),
@@ -265,7 +265,7 @@ SETTINGS = {
         "LATENT_SIZE": 64,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
-        "CHECKPOINT_NAME": get_path("final_checkpoints/tdmpc2-v2-all-i5 25-02-20 17_44_47_000046000.pth"),
+        "CHECKPOINT_NAME": get_path("final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth"),
         # which checkpoint should be used for the TD-MPC-2 Hockey agent?
     }
 }

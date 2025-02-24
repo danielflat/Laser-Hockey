@@ -18,7 +18,7 @@ class CompAgent(Agent):
         """
         For printing purposes only
         """
-        return f"CompAgent(is_Weak={self.is_Weak})"
+        return "WeakAgent" if self.is_Weak else "StrongAgent"
 
     def act(self, state: torch.Tensor) -> np.ndarray:
         return self.basic_opponent.act(state.cpu().numpy())

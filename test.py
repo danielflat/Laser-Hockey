@@ -8,6 +8,7 @@ import numpy as np
 import torch
 
 from src.agent import Agent
+from src.agents.destilled_agents.tdmpc2_destilled import TDMPC2DestilledAgent
 from src.settings import AGENT_SETTINGS, DQN_SETTINGS, PPO_SETTINGS, MPO_SETTINGS, TD_MPC2_SETTINGS
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, HUMAN, PENDULUM, HALFCHEETAH, RANDOM_ALGO, \
     SAC_ALGO, STRONG_COMP_ALGO, \
@@ -51,7 +52,7 @@ Author: Daniel Flat
 TEST_CHECK_POINT_NAME_PLAYER_1 = get_path(
     "final_checkpoints/sac_v4 epoch=2099999-step=6300000.ckpt")  # Which checkpoint do you want to test
 TEST_CHECK_POINT_NAME_PLAYER_2 = get_path(
-    "final_checkpoints/tdmpc2-v2-all-i5 25-02-20 17_44_47_000046000.pth")  # Which checkpoint do you want to test
+    "final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth")  # Which checkpoint do you want to test
 TEST_USE_ENV = HOCKEY  # On which environment do you want to test?
 TEST_USE_ALGO_PLAYER_1 = HUMAN  # Which algorithm do you want to test? Can be "human" or an algo constant
 TEST_USE_ALGO_PLAYER_2 = TDMPC2_ALGO  # Only Hockey: Which algorithm do you want to test for player 2? Can be "human" or an algo constant
