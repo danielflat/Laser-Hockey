@@ -29,7 +29,8 @@ from src.agents.td3agent import TD3Agent
 from src.agents.tdmpc2agent import TDMPC2Agent
 from src.settings import AGENT_SETTINGS, DDPG_SETTINGS, DQN_SETTINGS, MPO_SETTINGS, PPO_SETTINGS, SAC_SETTINGS, \
     TD3_SETTINGS, TD_MPC2_SETTINGS
-from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, SAC_ALGO, \
+from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, LUNARLANDER_CONTINOUS, MPO_ALGO, PPO_ALGO, RANDOM_ALGO, \
+    SAC_ALGO, \
     STRONG_COMP_ALGO, SUPPORTED_ALGORITHMS, \
     SUPPORTED_ENVIRONMENTS, \
     SUPPORTED_RENDER_MODES, \
@@ -55,6 +56,8 @@ def initEnv(use_env: str, render_mode: str | None, number_discrete_actions: None
 
     if use_env == HOCKEY:
         env = h_env.HockeyEnv(proxy_rewards=proxy_rewards)
+    elif use_env == LUNARLANDER_CONTINOUS:
+        env = gymnasium.make("LunarLander-v3", continuous=True)
     else:
         env = gymnasium.make(use_env, render_mode = render_mode)
 
