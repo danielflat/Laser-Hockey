@@ -5,7 +5,7 @@ import torch
 from time import localtime, strftime
 
 from src.util.constants import ADAM, ADAMW, DDPG_ALGO, DQN_ALGO, EXPONENTIAL, HALFCHEETAH, HOCKEY, HUMAN, LUNARLANDER, \
-    MSE_LOSS, \
+    LUNARLANDER_CONTINOUS, MSE_LOSS, \
     PENDULUM, \
     PINK_NOISE, \
     SMOOTH_L1_LOSS, TDMPC2_ALGO
@@ -44,7 +44,7 @@ SETTINGS = {
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
 
         # Environment settings
-        "USE_ENV": HOCKEY,  # The used environment
+        "USE_ENV": LUNARLANDER_CONTINOUS,  # The used environment
         "PROXY_REWARDS": True,  # If the agent should get proxy rewards (works only with HOCKEY)
         "APPLY_OWN_REWARD_FUNCTION": False,  # whether to apply your own reward function or the one of the environment,
         "POST_EDIT_REWARD": False,  # whether you want to edit your rewards after an episode again or not.
@@ -68,7 +68,7 @@ SETTINGS = {
 
         # CHECKPOINT: You can set a checkpoint name. It can either be None or the path
         # e.g. `get_path("output/checkpoints/25-01-16 09_15_28/25-01-16 09_15_28_00640.pth")`
-        "CHECKPOINT_NAME": get_path("final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth"),
+        "CHECKPOINT_NAME": None,
         "CHECKPOINT_ITER": 500,  # saves a checkpoint of this model after x iterations
         "MODEL_NAME": strftime('%y-%m-%d %H_%M_%S', localtime()),
         # under which name we want to store the logging results and the checkpoints

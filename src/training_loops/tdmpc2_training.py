@@ -26,7 +26,7 @@ from src.util.contract import initAgent, initEnv, initValEnv, initSeed, setupLog
 from src.util.plotutil import plot_training_metrics, plot_sac_training_metrics, plot_sac_validation_metrics
 
 
-def do_tdmpc2agent_other_env_training(env, agent, memory, seed=SEED):
+def do_tdmpc2agent_other_env_training(env, agent, memory, num_training_episodes=NUM_TRAINING_EPISODES, seed=SEED):
     episodes_durations = []
     episodes_rewards = []
     episode_training_statistics = []
@@ -34,7 +34,7 @@ def do_tdmpc2agent_other_env_training(env, agent, memory, seed=SEED):
 
     state, info = env.reset(seed=seed)
 
-    for i_training in range(1, NUM_TRAINING_EPISODES + 1):
+    for i_training in range(1, num_training_episodes + 1):
         # We track for each episode how high the reward was
         t_start = time.time()
         total_reward = 0
@@ -115,6 +115,8 @@ def do_tdmpc2agent_other_env_training(env, agent, memory, seed=SEED):
         # reset the environment
         state, info = env.reset(
             seed=seed + i_training)  # by resetting always a different but predetermined seed, we ensure the reproducibility of the results
+
+    return episodes_rewards
 
 
 def do_tdmpc2_hockey_training(env, agent, memory, opponent_pool: dict, self_opponent: Agent,
