@@ -59,7 +59,10 @@ def do_mpo_other_env_training(env, agent, memory):
     total_episodes = 0
     
     for i_training in range(1, NUM_TRAINING_EPISODES + 1):
-        # We track for each episode how high the reward was
+        
+        save = False
+        if i_training % 1_000 == 0  or i_training == NUM_TRAINING_EPISODES:
+            save = True
         total_reward = 0
         total_intrinsic_reward = 0
         total_episodes += 1
@@ -129,35 +132,30 @@ def do_mpo_other_env_training(env, agent, memory):
                 all_kl_µ.append(losses[2])
                 all_kl_Σ.append(losses[3])
 
-        # Plot every 100 episodes
-        if SHOW_PLOTS and i_training % 100 == 0:
-            plot_training_metrics(episode_durations = episodes_durations, episode_rewards = episodes_rewards,
-                                  episode_losses = episodes_losses, current_episode = i_training,
-                                  episode_update_iter = EPISODE_UPDATE_ITER)
-
-        # after some time, we save a checkpoint of our model
+        # After some time, we save a checkpoint of our model
         if (i_training % CHECKPOINT_ITER == 0):
             agent.saveModel(MODEL_NAME, i_training)
 
-        # reset the environment
+        # Reset the environment
         state, info = env.reset(
             seed = SEED + i_training) 
         
-    results = {
-        "all_rewards": all_rewards,
-        "all_intrinsic_rewards": all_intrinsic_rewards,
-        "all_steps": all_steps,
-        "all_critic_losses": all_critics_losses,
-        "all_actor_losses": all_actor_losses,
-        "all_kl": all_kl,
-        "all_kl_µ": all_kl_µ,
-        "all_kl_Σ": all_kl_Σ,
-    }
+        # Saving
+        if save: 
+            results = {
+                "all_rewards": all_rewards,
+                "all_intrinsic_rewards": all_intrinsic_rewards,
+                "all_steps": all_steps,
+                "all_critic_losses": all_critics_losses,
+                "all_actor_losses": all_actor_losses,
+                "all_kl": all_kl,
+                "all_kl_µ": all_kl_µ,
+                "all_kl_Σ": all_kl_Σ,
+            }
+            
+            save_training_metrics(results, MODEL_NAME, NUM_TRAINING_EPISODES)
     
-    # Save the results in json file
-    save_training_metrics(results, MODEL_NAME, NUM_TRAINING_EPISODES)
-    
-    return results
+    logging.info("Finished MPO training!")
 
     
 def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, self_opponent = Agent):
@@ -177,11 +175,11 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
 
     total_steps = 0
     total_episodes = 0
-    save = False
 
     for i_episode in range(1, NUM_TRAINING_EPISODES + 1):
         
         # Define some variables
+        save = False
         if i_episode % 10_000 == 0  or i_episode == NUM_TRAINING_EPISODES:
             save = True
         total_reward = 0
@@ -242,8 +240,8 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             # Adjust the reward using intrinsic curiosity module
             if CURIOSITY is not None:
                 intrinsic_reward = agent.icm.compute_intrinsic_reward(state, next_state, action_agent)
+                total_intrinsic_reward += float(intrinsic_reward.detach().cpu().numpy())
                 reward = reward + CURIOSITY * intrinsic_reward
-                total_intrinsic_reward += intrinsic_reward.detach().cpu().numpy()
 
             # Store transitions in replay buffer
             memory.push(state, action_agent, reward, next_state, done, info)
@@ -309,7 +307,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
             assert CHECKPOINT_ITER % EPISODE_UPDATE_ITER == 0, "Checkpointing freq should be larger than update freq!"
             
             # Validation
-            opponent_metrics = validate_mpo_hockey(agent, val_env, opponent_pool, num_episodes=10, 
+            opponent_metrics = validate_mpo_hockey(agent, val_env, opponent_pool, num_episodes=50, 
                                                    seed_offset=SEED + total_episodes)
             val_opponent_metrics.append(opponent_metrics)
             
@@ -324,26 +322,25 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
                                       all_kl, all_kl_µ, all_kl_Σ, val_opponent_metrics, discrete=DISCRETE, save=save)
             if CURIOSITY is not None:
                 plot_mpo_intrinsic_rewards(all_rewards, all_intrinsic_rewards, save=save)
+                
+        # Saving
+        if save:
+            results = {
+                "all_rewards": all_rewards,
+                "all_intrinsic_rewards": all_intrinsic_rewards,
+                "all_wins": all_wins,
+                "all_steps": all_steps,
+                "all_critic_losses": all_critic_losses,
+                "all_actor_losses": all_actor_losses,
+                "all_kl": all_kl,
+                "all_kl_µ": all_kl_µ,
+                "all_kl_Σ": all_kl_Σ,
+                "val_opponent_metrics": val_opponent_metrics,
+                }
+            
+            save_training_metrics(results, MODEL_NAME, total_episodes)
 
     logging.info("Finished MPO training!")
-    
-    results = {
-    "all_rewards": all_rewards,
-    "all_intrinsic_rewards": all_intrinsic_rewards,
-    "all_wins": all_wins,
-    "all_steps": all_steps,
-    "all_critic_losses": all_critic_losses,
-    "all_actor_losses": all_actor_losses,
-    "all_kl": all_kl,
-    "all_kl_µ": all_kl_µ,
-    "all_kl_Σ": all_kl_Σ,
-    "val_opponent_metrics": val_opponent_metrics,
-    }
-    
-    # Save the results in json file
-    save_training_metrics(results, MODEL_NAME, total_episodes)
-        
-    return results
     
 
 def validate_mpo_hockey(agent, val_env, opponent_pool: dict, num_episodes: int, seed_offset: int = 0):

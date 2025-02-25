@@ -415,12 +415,12 @@ class MPOAgent(Agent):
             g = η * self.ε_dual + np.mean(max_q) + η * np.mean(np.log(x))
             return g
         
-        # Minimize the dual function using the scipy minimize function (1st constraint)
+        # Minimize the dual function using scipy minimize 
         res = minimize(dual, np.array([self.η]), method='SLSQP', bounds=[(1e-3, None)])
         # Update the dual variable η
         self.η = res.x[0]
         
-        # Compute action weights (new q values) using dual variable η (see 3rd eq on page 4)
+        # Compute action weights (new q values) using dual variable η 
         # Apply softmax over all actions to normailze q values (2nd constriant)
         qij = torch.softmax(q_target / self.η, dim=1) # (K, N) or (K, da)
         return qij
@@ -444,7 +444,7 @@ class MPOAgent(Agent):
         K = self.batch_size
         
         with torch.no_grad():
-            ################# Continuous evaluation ##################
+            ################# Continuous E step ##################
             if self.continuous:
                 # 1. We first get the mean and covariance of the target policy
                 b_μ, b_A = self.target_actor(states) # (K,) K batch size
@@ -461,7 +461,7 @@ class MPOAgent(Agent):
                 qij = self.find_qij_dist(target_q.transpose(0, 1), None) # (K, N) 
                 
                 return sampled_actions, qij, b_μ, b_A
-            ################## Discrete evaluation ####################
+            ################## Discrete E step ####################
             else:
                 # 1. Here we also get the policy output first, but again we dont sample 
                 b, _ = self.target_actor(states) # (K, da)
@@ -495,7 +495,7 @@ class MPOAgent(Agent):
         """
         N = self.sample_action_num
         K = self.batch_size
-        ################# Continuous maximization ##################
+        ################# Continuous M step ##################
         if self.continuous:
             # 1. Mean and covariance of the current policy
             μ, A = self.actor(states) # (K,)
@@ -534,7 +534,7 @@ class MPOAgent(Agent):
                 )
             
             return loss_actor, kl_μ.detach(), kl_Σ.detach()
-        ################## Discrete maximization ##################
+        ################## Discrete M step ##################
         else:
             # Creates action tensor of shape (da, K), where each of the K rows contains repeated indices ranging from 0 to self.da - 1
             actions = torch.arange(self.da).unsqueeze(1).expand(self.da, K).to(self.device)  # (da, K)
