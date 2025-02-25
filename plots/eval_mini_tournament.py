@@ -1,6 +1,7 @@
 import copy
 
 import time
+import imageio 
 
 from itertools import count
 
@@ -22,13 +23,13 @@ import hockey.hockey_env as h_env
 
 # Settings for this class
 BEST_TDMPC2_CHECKPOINT = get_path(
-    "final_checkpoints/tdmpc2-v2-all-i5 25-02-20 17_44_47_000046000.pth")  # Which checkpoint do you want to test
+    "final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth")  # Which checkpoint do you want to test
 BEST_SAC_CHECKPOINT = get_path(
     "final_checkpoints/sac_v4 epoch=2099999-step=6300000.ckpt")  # Which checkpoint do you want to test
 BEST_MPO_CHECKPOINT = get_path(
-    "final_checkpoints/mpo_with_tdmpc_2_sac_v3.pth")  # Which checkpoint do you want to test
+    "final_checkpoints/mpo_with_tdmpc_2_sac_v5.pth")  # Which checkpoint do you want to test
 TOURNAMENT_RESULTS_FILE_NAME = get_path("plots/eval_mini_tournament_results.tex")
-NUM_GAMES_PER_MATCH = 10  # The number of games each pair is playing against
+NUM_GAMES_PER_MATCH = 3  # The number of games each pair is playing against
 TABLE_CAPTION = "Pair-wise Evaluation of out Agents"
 
 TOURNAMENT_USE_ENV = HOCKEY  # On which environment do you want to test?
@@ -37,11 +38,12 @@ TOURNAMENT_NUMBER_DISCRETE_ACTIONS = None  # if you want to use discrete actions
 TEST_SEED = 1000000  # Set a test seed if you want to
 TEST_RENDER_MODE = HUMAN  # For whom do you want to render? None or HUMAN
 TEST_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # which device are you using?
-
+SAVE_RENDERING = False
 
 def play_matches(env, player1, player2):
     episode_steps = []
     episode_rewards = []
+    frames = []
     num_won = 0
     num_draw = 0
     num_loss = 0
@@ -57,11 +59,13 @@ def play_matches(env, player1, player2):
 
         state, info = env.reset(seed=TEST_SEED + i_test)
         state2 = env.obs_agent_two()
-        env.render()
+        frame = env.render(mode="rgb_array")
+        frames.append(frame)
 
         for _ in count():
             if TOURNAMENT_USE_ENV == HOCKEY:
-                env.render()
+                frame = env.render(mode="rgb_array")
+                frames.append(frame)
 
             state = torch.tensor(state, device=TEST_DEVICE, dtype=torch.float32)
             state2 = torch.tensor(state2, device=TEST_DEVICE, dtype=torch.float32)
@@ -97,7 +101,9 @@ def play_matches(env, player1, player2):
                 print(
                     f"Episode: {i_test} | {player1} vs. {player2} | Result: {episode_result} | Total steps: {total_steps} | Total reward: {total_reward} | Req. Time: {t_required:.4} sec.")
                 break
-    return episode_steps, episode_rewards, num_won, num_draw, num_loss
+    
+    
+    return episode_steps, episode_rewards, num_won, num_draw, num_loss, frames
 
 
 def eval_mini_tournament():
@@ -122,13 +128,13 @@ def eval_mini_tournament():
                           checkpoint_name=BEST_MPO_CHECKPOINT)
     mpo_agent.setMode(eval=True)
 
-    game1_episode_steps, game1_episode_rewards, game1_num_won, game1_num_draw, game1_num_loss = play_matches(env,
+    game1_episode_steps, game1_episode_rewards, game1_num_won, game1_num_draw, game1_num_loss, game1_frames = play_matches(env,
                                                                                                              player1=tdmpc_agent,
                                                                                                              player2=sac_agent)
-    game2_episode_steps, game2_episode_rewards, game2_num_won, game2_num_draw, game2_num_loss = play_matches(env,
+    game2_episode_steps, game2_episode_rewards, game2_num_won, game2_num_draw, game2_num_loss, game2_frames = play_matches(env,
                                                                                                              player1=tdmpc_agent,
                                                                                                              player2=mpo_agent)
-    game3_episode_steps, game3_episode_rewards, game3_num_won, game3_num_draw, game3_num_loss = play_matches(env,
+    game3_episode_steps, game3_episode_rewards, game3_num_won, game3_num_draw, game3_num_loss, game3_frames = play_matches(env,
                                                                                                              player1=sac_agent,
                                                                                                              player2=mpo_agent)
 
@@ -176,6 +182,11 @@ def eval_mini_tournament():
     # Writing the LaTeX table into a .tex file
     with open(TOURNAMENT_RESULTS_FILE_NAME, "w") as f:
         f.write(latex_with_resize)
+    
+    # Save the frames as a gif
+    if SAVE_RENDERING:
+        frames = game1_frames + game2_frames + game3_frames
+        imageio.mimsave("output/renderings/eval_mini_tournament.gif", frames, fps=30)
 
     print("Tournament finished! 🏁")
 
