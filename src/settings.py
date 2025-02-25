@@ -55,7 +55,7 @@ SETTINGS = {
 
         # Defining training loop
         "BUFFER_SIZE": 1_000,  # How many items can be stored in the replay buffer?
-        "NUM_TRAINING_EPISODES": 10_000,  # How many training episodes should be run?
+        "NUM_TRAINING_EPISODES": 100_000,  # How many training episodes should be run?
         "NUM_TEST_EPISODES": 1_000,  # How many test episodes should be run?
         "EPISODE_UPDATE_ITER": 1,
         # after how many episodes should the model be updated? =1, update your agent after every episode
@@ -265,7 +265,7 @@ SETTINGS = {
         "LATENT_SIZE": 64,
         "LOG_STD_MIN": -10,
         "LOG_STD_MAX": 2,
-        "CHECKPOINT_NAME": get_path("final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth"),
+        "CHECKPOINT_NAME": get_path("final_checkpoints/tdmpc2-v2-all-i7 25-02-20 17_44_47_000067500.pth"),
         # which checkpoint should be used for the TD-MPC-2 Hockey agent?
     }
 }

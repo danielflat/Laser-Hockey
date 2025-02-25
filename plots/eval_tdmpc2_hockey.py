@@ -26,7 +26,7 @@ Daniel Flat
 
 # Settings for this class
 BEST_TDMPC2_CHECKPOINT = get_path(
-    "final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth")  # Which checkpoint do you want to test
+    "final_checkpoints/tdmpc2-v2-all-i7 25-02-20 17_44_47_000067500.pth")  # Which checkpoint do you want to test
 BEST_DDPG_CHECKPOINT = get_path(
     "final_checkpoints/hockey_ddpg_smoothl1_25-01-22 17_36_56_100000.pth")  # Which checkpoint do you want to test
 TOURNAMENT_RESULTS_FILE_NAME = get_path("plots/eval_tdmpc2_hockey_results.tex")
