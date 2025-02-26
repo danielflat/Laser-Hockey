@@ -180,7 +180,7 @@ def do_mpo_hockey_training(env, val_env, agent, memory, opponent_pool: dict, sel
         
         # Define some variables
         save = False
-        if i_episode % 10_000 == 0  or i_episode == NUM_TRAINING_EPISODES:
+        if i_episode % 1_000 == 0  or i_episode == NUM_TRAINING_EPISODES:
             save = True
         total_reward = 0
         total_intrinsic_reward = 0

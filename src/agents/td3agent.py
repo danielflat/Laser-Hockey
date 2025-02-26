@@ -16,10 +16,6 @@ from src.util.icmutil import ICM
 Author: Andre Pfrommer
 """
 
-####################################################################################################
-# Critic and Actor Networks
-####################################################################################################
-
 class Critic(nn.Module):
     def __init__(self, state_size: int, hidden_size: int, action_size: int, num_layers: int,
                  cross_q: bool, bn_momentum: float=0.9):
@@ -64,10 +60,11 @@ class Critic(nn.Module):
         return self.network(concat_input)
 
 class Actor(nn.Module):
-    def __init__(self, state_size: int, hidden_size: int, action_size: int, action_high: torch.Tensor):
+    def __init__(self, state_size: int, hidden_size: int, action_size: int, action_scale: torch.Tensor, action_bias: torch.Tensor):
         super().__init__()
         
-        self.action_high  = action_high
+        self.action_scale = action_scale
+        self.action_bias = action_bias
 
         self.network = nn.Sequential(
             nn.Linear(state_size, hidden_size),
@@ -83,41 +80,41 @@ class Actor(nn.Module):
         Calculates the Actor values over all actions for the given state
         """
         action = self.network(state)
-        return action * self.action_high
-
-####################################################################################################
-# TD3 Agent
-####################################################################################################
+        return action 
 
 class TD3Agent(Agent):
     def __init__(self, state_space, action_space, agent_settings: dict, td3_settings: dict, device: device):
         super().__init__(agent_settings = agent_settings, device = device)
 
         self.isEval = None
+        self.device = device
 
         self.state_space = state_space
         self.action_space = action_space
-        self.action_low = torch.tensor(action_space.low, dtype = torch.float32, device = self.device)
-        self.action_high = torch.tensor(action_space.high, dtype = torch.float32, device = self.device)
+        state_size = state_space.shape[0]
+        action_size = self.get_num_actions(action_space)
+        self.action_low = torch.tensor(action_space.low, dtype = torch.float32, device = self.device)[:action_size]
+        self.action_high = torch.tensor(action_space.high, dtype = torch.float32, device = self.device)[:action_size]
         self.action_scale = (self.action_high - self.action_low) / 2.0
         self.action_bias = (self.action_high + self.action_low) / 2.0
-        state_size = state_space.shape[0]
-        action_size = action_space.shape[0]
 
         self.policy_delay = td3_settings["POLICY_DELAY"]
         self.noise_clip = td3_settings["NOISE_CLIP"]
+        self.target_noise = td3_settings["TARGET_NOISE"]
+        self.action_noise = td3_settings["ACTION_NOISE"]
         self.hidden_size = td3_settings["HIDDEN_DIM"]
         self.num_layers = td3_settings["NUM_LAYERS"]
         self.bn_momentum = td3_settings["BATCHNORM_MOMENTUM"]
+        
         #Whether or not to use Batchnorm
         self.cross_q = True
         if self.use_target_net:
             self.cross_q = False
-        
+
         #Initialize the noise 
         self.noise = initNoise(action_shape = (action_size,), noise_settings = td3_settings["NOISE"],
                                device = self.device)
-        self.noise_factor = td3_settings["NOISE"]["NOISE_FACTOR"]
+        
 
         # Here we have 2 Q Networks
         self.Critic1 = Critic(state_size=state_size,
@@ -125,17 +122,18 @@ class TD3Agent(Agent):
                             action_size=action_size,
                             num_layers=self.num_layers,
                             cross_q=self.cross_q,
-                            bn_momentum=self.bn_momentum).to(device)
+                            bn_momentum=self.bn_momentum).to(self.device)
         self.Critic2 = Critic(state_size=state_size,
                             hidden_size=self.hidden_size,
                             action_size=action_size,
                             num_layers=self.num_layers,
                             cross_q=self.cross_q,
-                            bn_momentum=self.bn_momentum).to(device)
+                            bn_momentum=self.bn_momentum).to(self.device)
         self.Actor = Actor(state_size=state_size,
                         hidden_size=self.hidden_size,
-                        action_size=action_siz, 
-                        action_high=self.action_high).to(device)
+                        action_size=action_size, 
+                        action_scale=self.action_scale,
+                        action_bias=self.action_bias).to(self.device)
         
         if self.use_target_net:
             self.Critic1_target = Critic(state_size=state_size,
@@ -151,7 +149,8 @@ class TD3Agent(Agent):
             self.Actor_target = Actor(state_size=state_size,
                                     hidden_size=self.hidden_size,
                                     action_size=action_size,
-                                    action_high=self.action_high).to(device)
+                                    action_scale=self.action_scale,
+                                    action_bias=self.action_bias).to(device)
             # Set the target nets in eval
             self.Critic1_target.eval()
             self.Critic2_target.eval()
@@ -169,8 +168,6 @@ class TD3Agent(Agent):
         #Define Loss function
         self.criterion = self.initLossFunction(loss_name = td3_settings["CRITIC"]["LOSS_FUNCTION"])
         
-        #Initialize intrinsic curiosity module 
-        self.icm = ICM(state_size, action_size, discrete = False)
 
     def act(self, state: torch.Tensor) -> torch.Tensor:
         """
@@ -181,16 +178,15 @@ class TD3Agent(Agent):
         """
         
         if self.isEval:
-            self.noise_factor = 0
+            self.action_noise=0
             
         with torch.no_grad():
-            #Exploration noise
-            noise = torch.normal(mean = 0, std = self.noise_factor)
-            #noise = torch.from_numpy(self.noise.sample() * self.noise_factor)
+            noise = torch.from_numpy(self.noise.sample() * self.action_noise)
             
             #Forward pass for the Actor network and rescaling
             self.Actor.eval() #eval mode for batchnorm to compute running statistics
-            det_action = self.Actor(state) 
+            det_action = self.Actor(state)
+            
             action = det_action + noise
             action = torch.clamp(
                 det_action + noise, 
@@ -212,18 +208,17 @@ class TD3Agent(Agent):
 
         # Exploration noise
         noise = torch.clamp(
-            torch.normal(mean = 0, std = self.noise_factor),
-            #torch.from_numpy(self.noise.sample() * self.noise_factor),
+            torch.from_numpy(self.noise.sample() * self.target_noise),
             min = -self.noise_clip,
             max = self.noise_clip)
         
         if self.cross_q:
             # 1. Next action via the Actor network
             next_action = self.Actor(next_state) * self.action_scale + self.action_bias
-            #next_action = torch.clamp(
-            #    next_action + noise,
-            #    min = self.action_low,  # Minimum action value
-            #    max = self.action_high).float()  # Maximum action value
+            next_action = torch.clamp(
+                next_action + noise,
+                min = self.action_low,  # Minimum action value
+                max = self.action_high).float()  # Maximum action value
             
             # Concat both states and actions for joint forward pass
             cat_states = torch.cat([state, next_state], 0) # (batch_size x 2, state_size)
@@ -251,7 +246,7 @@ class TD3Agent(Agent):
         
         else:
             # 1. Next action via the target Actor network
-            prop_action = self.Actor_target(next_state) 
+            prop_action = self.Actor_target(next_state) * self.action_scale + self.action_bias
             next_action = torch.clamp(
                 prop_action + noise,
                 min = self.action_low,
@@ -280,20 +275,17 @@ class TD3Agent(Agent):
         losses = []
         # We start at i=1 to prevent a direct update of the weights
         for i in range(1, self.opt_iter + 1):
-            #Sample from the replay memory
+            # Sample from the replay memory
             state, action, reward, next_state, done, info = memory.sample(self.batch_size, randomly=True)
             
-            # Train the curiosity module 
-            # self.icm.train(state, next_state, action)
-            
-            #Forward pass for Q networks
+            # Forward pass for Q networks
             if self.USE_BF_16:
                 with torch.autocast(device_type = self.device.type, dtype = torch.bfloat16):
                         Critic_loss = self.critic_forward(state, action, reward, done, next_state)
             else:
                 Critic_loss = self.critic_forward(state, action, reward, done, next_state)
             
-            #Backward step for Q networks
+            # Backward step for Q networks
             self.optimizer_critic.zero_grad()
             Critic_loss.backward()
             if self.use_gradient_clipping:
@@ -302,7 +294,7 @@ class TD3Agent(Agent):
                     clip_value = self.gradient_clipping_value, foreach = self.use_clip_foreach)
             self.optimizer_critic.step()
             
-            #Get the target for Policy network
+            # Get the target for Policy network
             if self.USE_BF_16:
                 with torch.autocast(device_type = self.device.type, dtype = torch.bfloat16):
                     q_1 = self.Critic1.forward(state, self.Actor.forward(state))
@@ -346,21 +338,6 @@ class TD3Agent(Agent):
             self.Critic1.train()
             self.Critic2.train()
             self.Actor.train()
-            
-    def saveModel(self, model_name: str, iteration: int) -> None:
-        """
-        Saves the model parameters of the agent.
-        """
-        checkpoint = self.export_checkpoint()
-
-        directory = get_path(f"output/checkpoints/{model_name}")
-        file_path = os.path.join(directory, f"{model_name}_{iteration:05}.pth")
-
-        # Ensure the directory exists
-        os.makedirs(directory, exist_ok = True)
-
-        torch.save(checkpoint, file_path)
-        logging.info(f"Iteration: {iteration} TD3 checkpoint saved successfully!")
 
     def _copy_nets(self) -> None:
         assert self.use_target_net == True
@@ -388,4 +365,5 @@ class TD3Agent(Agent):
         return checkpoint
 
     def reset(self):
-        raise NotImplementedError
+       pass
+
