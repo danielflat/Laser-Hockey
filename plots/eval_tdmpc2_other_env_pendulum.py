@@ -4,6 +4,7 @@ import logging
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
+from pytorch_lightning.utilities.types import EVAL_DATALOADERS
 from tueplots import bundles
 
 from src.replaymemory import ReplayMemory
@@ -83,8 +84,8 @@ def eval_tdmpc2_other_env():
     lunar_lander_reward_mean = lunar_lander_reward.mean(0)
     lunar_lander_reward_std = lunar_lander_reward.std(0, ddof=1)
 
-    np.save(get_path("plots/data/eval_tdmpc2_other_env_pendulum_reward.npy"), pendulum_reward)
-    np.save(get_path("plots/data/eval_tdmpc2_other_env_lunar_lander_reward.npy"), lunar_lander_reward)
+    np.save(get_path("plots/data/eval_tdmpc2_other_env_pendulum_reward_working.npy"), pendulum_reward)
+    np.save(get_path("plots/data/eval_tdmpc2_other_env_lunar_lander_reward_not_working.npy"), lunar_lander_reward)
 
     fig, axes = plt.subplots(1, 2, figsize=(18, 5))
 

@@ -50,17 +50,17 @@ Author: Daniel Flat
 
 # Settings for this class
 TEST_CHECK_POINT_NAME_PLAYER_1 = get_path(
-    "final_checkpoints/sac_v4 epoch=2099999-step=6300000.ckpt")  # Which checkpoint do you want to test
+    "final_checkpoints/25-02-20 17_44_47_000078000.pth")  # Which checkpoint do you want to test
 TEST_CHECK_POINT_NAME_PLAYER_2 = get_path(
-    "final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth")  # Which checkpoint do you want to test
+    "final_checkpoints/tdmpc2-v2-all-i7 25-02-20 17_44_47_000067500.pth")  # Which checkpoint do you want to test
 TEST_USE_ENV = HOCKEY  # On which environment do you want to test?
-TEST_USE_ALGO_PLAYER_1 = HUMAN  # Which algorithm do you want to test? Can be "human" or an algo constant
+TEST_USE_ALGO_PLAYER_1 = TDMPC2_ALGO  # Which algorithm do you want to test? Can be "human" or an algo constant
 TEST_USE_ALGO_PLAYER_2 = TDMPC2_ALGO  # Only Hockey: Which algorithm do you want to test for player 2? Can be "human" or an algo constant
 TEST_NUMBER_DISCRETE_ACTIONS = None  # if you want to use discrete actions or continuous. If > 0, you use the DiscreteActionWrapper
 TEST_SEED = 100000  # Set a test seed if you want to
 TEST_RENDER_MODE = HUMAN  # For whom do you want to render? None or HUMAN
 TEST_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # which device are you using?
-TEST_ITERATIONS = 1000  # The number of test iterations
+TEST_ITERATIONS = 100  # The number of test iterations
 
 
 def test():

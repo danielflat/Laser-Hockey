@@ -1,4 +1,4 @@
-<h1 style="text-align: center">Project_RL</h1>
+<h1 style="text-align: center">The Bests Around</h1>
 
 ---
 
@@ -13,12 +13,16 @@
 <div style="display: flex; justify-content: space-around;">
     <h5>Lecture: Reinforcement Learning</h5>
     <h5>Semester: WS25</h5>
-    <h5>University: University of Tübingen</h5>
+    <h5>University of Tübingen</h5>
     <h5>Lecturer: Georg Martius</h5>
     </h5>
 </div>
 
 ---
 
-This is our project submission for the Reinforcement Learning lecture.
+This is the Code for the Project Report "The Bests Around – Hockey Tournament RL 24/25".
+
+
+
+
 

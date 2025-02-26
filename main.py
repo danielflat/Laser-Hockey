@@ -15,7 +15,6 @@ from src.training_loops.tdmpc2_training import do_tdmpc2_hockey_training, do_tdm
 from src.util.constants import DDPG_ALGO, DQN_ALGO, HOCKEY, MPO_ALGO, RANDOM_ALGO, SAC_ALGO, STRONG_COMP_ALGO, \
     TDMPC2_ALGO, WEAK_COMP_ALGO
 from src.util.contract import initAgent, initEnv, initSeed, initValEnv, setupLogging
-from src.util.plotutil import plot_sac_training_metrics, plot_sac_validation_metrics
 
 """
 This is the main file of this project.

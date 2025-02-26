@@ -6,9 +6,7 @@ import gymnasium
 import logging
 import numpy as np
 import torch
-from sympy import false
 from torch import nn
-from torch.nn import functional as F
 from typing import Any, Dict
 
 from src.agent import Agent
@@ -25,14 +23,6 @@ See GitHub for original implementation: https://github.com/nicklashansen/tdmpc2/
 Author: Daniel Flat
 """
 
-
-def _log_std_clamp(log_std, min_value = -10, max_value = 2):
-    """Clamp log_std to a specific range."""
-    return torch.clamp(log_std, min_value, max_value)
-
-
-
-# TODO
 class EncoderNet(nn.Module):
     def __init__(self, state_size: int, latent_size: int):
         super().__init__()
@@ -50,7 +40,6 @@ class EncoderNet(nn.Module):
         return latent_state
 
 
-# TODO
 class DynamicsNet(nn.Module):
     def __init__(self, latent_size: int, action_size: int):
         super().__init__()
@@ -131,7 +120,6 @@ class CriticNet(nn.Module):
 
 # df: I am experimenting here to try out if the Agent could also be a nn.Module
 # Can be maybe converted then to the parent class
-# TODO: Bad interface. Extend it with more parameters
 class TDMPC2Agent(Agent, nn.Module):
     def __init__(self, state_space: gymnasium.spaces.box.Box, action_space: gymnasium.spaces.box.Box,
                  agent_settings: dict, td_mpc2_settings: dict,
@@ -541,7 +529,7 @@ class TDMPC2Agent(Agent, nn.Module):
 
     def _calculate_policy_loss(self, latent_state_sequence: torch.Tensor) -> torch.Tensor:
         action, info = self._predict_action(latent_state_sequence)
-        q_value = self._min_q_value(latent_state_sequence, action, use_target = false)
+        q_value = self._min_q_value(latent_state_sequence, action, use_target=False)
 
         # Loss is a weighted sum of horizon Q-values
         policy_loss = 0

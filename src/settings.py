@@ -48,7 +48,7 @@ SETTINGS = {
         "PROXY_REWARDS": True,  # If the agent should get proxy rewards (works only with HOCKEY)
         "APPLY_OWN_REWARD_FUNCTION": False,  # whether to apply your own reward function or the one of the environment,
         "POST_EDIT_REWARD": False,  # whether you want to edit your rewards after an episode again or not.
-        "RENDER_MODE": HUMAN,  # The render mode. Supported: None for no rendering or HUMAN for rendering
+        "RENDER_MODE": None,  # The render mode. Supported: None for no rendering or HUMAN for rendering
         "NUMBER_DISCRETE_ACTIONS": None,
         # If None, you use a continuous action space, else you use a discrete action set
         "USE_ALGO": TDMPC2_ALGO,  # The used algorithm for the main agent. SEE SUPPORTED_ALGORITHMS
@@ -251,7 +251,7 @@ SETTINGS = {
         "ENTROPY_COEF": 1e-4,
         "ENC_LR_SCALE": 0.3,
 
-        "USE_OWN_NOISE": True,  # If we want to use our own noise und keep use the noise from the prior
+        "USE_OWN_NOISE": False,  # If we want to use our own noise und keep use the noise from the prior
         "NOISE": _DEFAULT_NOISE,  # Which noise should we add
         "HORIZON": 1,  # How many steps do we want to consider while doing predictions
 

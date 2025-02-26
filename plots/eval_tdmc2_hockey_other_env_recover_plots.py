@@ -2,7 +2,6 @@ import pickle
 
 import numpy as np
 from matplotlib import pyplot as plt
-from tueplots import bundles
 
 from plots.eval_tdmpc2_other_env import LUNAR_LANDER_TRAINING_STEPS, PENDULUM_TRAINING_STEPS
 from src.util.directoryutil import get_path
@@ -33,7 +32,7 @@ random_agent_win_rate = np.load(get_path("plots/data/eval_tdmpc2_hockey_training
 weak_agent_win_rate = np.load(get_path("plots/data/eval_tdmpc2_hockey_training_all_weak_agent_win_rate.npy"))
 strong_agent_win_rate = np.load(get_path("plots/data/eval_tdmpc2_hockey_training_strong_agent_win_rate.npy"))
 ddpg_agent_win_rate = np.load(get_path("plots/data/eval_tdmpc2_hockey_training_ddpg_agent_win_rate.npy"))
-pendulum_reward = np.load(get_path("plots/data/eval_tdmpc2_other_env_pendulum_reward.npy"))
+pendulum_reward = np.load(get_path("plots/data/eval_tdmpc2_other_env_pendulum_reward_working.npy"))
 lunar_lander_reward = np.load(get_path("plots/data/eval_tdmpc2_other_env_lunar_lander_reward.npy"))
 
 print("Numpy done")
@@ -68,60 +67,58 @@ ddpg_agent_win_rate_std = ddpg_agent_win_rate.std(0, ddof=1)
 print("Prep done")
 
 # Plot Mean with 95% Confidence Interval
-fig, axes = plt.subplots(1, 4, figsize=(18, 5))
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
 axes[0].plot(pendulum_x_axis, pendulum_reward_mean, color=COLOR_MAP[0])
 axes[0].fill_between(pendulum_x_axis, pendulum_reward_mean - pendulum_reward_std,
                      pendulum_reward_mean + pendulum_reward_std, color=COLOR_MAP[0], alpha=0.2)
-axes[0].set_xticks(pendulum_x_axis)
 axes[0].set_xlabel('Episodes')
 axes[0].set_ylabel('Reward')
 axes[0].set_title('Pendulum Rewards over Episodes')
 
-axes[1].plot(lunar_lander_x_axis, lunar_lander_reward_mean, color=COLOR_MAP[0])
-axes[1].fill_between(lunar_lander_x_axis, lunar_lander_reward_mean - lunar_lander_reward_std,
-                     lunar_lander_reward_mean + lunar_lander_reward_std, color=COLOR_MAP[0], alpha=0.2)
-axes[1].set_xticks(lunar_lander_x_axis)
-axes[1].set_xlabel('Episodes')
-axes[1].set_ylabel('Reward')
-axes[1].set_title('Lunar Lander Rewards over Episodes')
+# axes[1].plot(lunar_lander_x_axis, lunar_lander_reward_mean, color=COLOR_MAP[0])
+# axes[1].fill_between(lunar_lander_x_axis, lunar_lander_reward_mean - lunar_lander_reward_std,
+#                      lunar_lander_reward_mean + lunar_lander_reward_std, color=COLOR_MAP[0], alpha=0.2)
+# axes[1].set_xlabel('Episodes')
+# axes[1].set_ylabel('Reward')
+# axes[1].set_title('Lunar Lander Rewards over Episodes')
 
 print("ax 00 & 01 done")
 
-axes[2].plot(x_axis, mean_total_losses, color=COLOR_MAP[0])
-axes[2].fill_between(x_axis, mean_total_losses - std_total_losses,
+axes[1].plot(x_axis, mean_total_losses, color=COLOR_MAP[0])
+axes[1].fill_between(x_axis, mean_total_losses - std_total_losses,
                      mean_total_losses + std_total_losses, color=COLOR_MAP[0], alpha=0.2)
-axes[2].set_xlabel('Episodes')
-axes[2].set_ylabel('Loss')
-axes[2].set_title('Duration over Episodes')
+axes[1].set_xlabel('Episodes')
+axes[1].set_ylabel('Loss')
+axes[1].set_title('TD-MPC Hockey Loss over Episodes')
 
 print("ax 02 done")
 
 # Random
-axes[3].plot(x_axis, random_agent_win_rate_mean, color=COLOR_MAP[0], label='Random Agent')
-axes[3].fill_between(x_axis, random_agent_win_rate_mean - random_agent_win_rate_std,
+axes[2].plot(x_axis, random_agent_win_rate_mean, color=COLOR_MAP[0], label='Random Agent')
+axes[2].fill_between(x_axis, random_agent_win_rate_mean - random_agent_win_rate_std,
                      random_agent_win_rate_mean + random_agent_win_rate_std, color=COLOR_MAP[0], alpha=0.2)
 # Weak
-axes[3].plot(x_axis, weak_agent_win_rate_mean, color=COLOR_MAP[1], label='Weak Agent')
-axes[3].fill_between(x_axis, weak_agent_win_rate_mean - weak_agent_win_rate_std,
+axes[2].plot(x_axis, weak_agent_win_rate_mean, color=COLOR_MAP[1], label='Weak Agent')
+axes[2].fill_between(x_axis, weak_agent_win_rate_mean - weak_agent_win_rate_std,
                      weak_agent_win_rate_mean + weak_agent_win_rate_std, color=COLOR_MAP[1], alpha=0.2)
 # Strong
-axes[3].plot(x_axis, strong_agent_win_rate_mean, color=COLOR_MAP[2], label='Strong Agent')
-axes[3].fill_between(x_axis, strong_agent_win_rate_mean - strong_agent_win_rate_std,
+axes[2].plot(x_axis, strong_agent_win_rate_mean, color=COLOR_MAP[2], label='Strong Agent')
+axes[2].fill_between(x_axis, strong_agent_win_rate_mean - strong_agent_win_rate_std,
                      strong_agent_win_rate_mean + strong_agent_win_rate_std, color=COLOR_MAP[2], alpha=0.2)
 # DDPG
-axes[3].plot(x_axis, ddpg_agent_win_rate_mean, color=COLOR_MAP[3], label='DDPG Agent')
-axes[3].fill_between(x_axis, ddpg_agent_win_rate_mean - ddpg_agent_win_rate_std,
+axes[2].plot(x_axis, ddpg_agent_win_rate_mean, color=COLOR_MAP[3], label='DDPG Agent')
+axes[2].fill_between(x_axis, ddpg_agent_win_rate_mean - ddpg_agent_win_rate_std,
                      ddpg_agent_win_rate_mean + ddpg_agent_win_rate_std, color=COLOR_MAP[3], alpha=0.2)
-axes[3].set_xlabel('Episodes')
-axes[3].set_ylabel('Win Rate')
-axes[3].set_title('Win Rate over Episodes')
-axes[3].set_ylim(0, 1)
-axes[3].axhline(y=0.57, linestyle='--', color=COLOR_MAP[0], linewidth=2, label="Random Agent (after training)")
-axes[3].axhline(y=0.55, linestyle='--', color=COLOR_MAP[1], linewidth=2, label="Weak Agent (after training)")
-axes[3].axhline(y=0.47, linestyle='--', color=COLOR_MAP[2], linewidth=2, label="Strong Agent (after training)")
-axes[3].axhline(y=0.64, linestyle='--', color=COLOR_MAP[3], linewidth=2, label="DDPG Agent (after training)")
-axes[3].legend()
+axes[2].set_xlabel('Episodes')
+axes[2].set_ylabel('Win Rate')
+axes[2].set_title('TD-MPC Hockey Win Rate over Episodes')
+axes[2].set_ylim(0, 1)
+axes[2].axhline(y=0.57, linestyle='--', color=COLOR_MAP[0], linewidth=2, label="Random Agent (after training)")
+axes[2].axhline(y=0.55, linestyle='--', color=COLOR_MAP[1], linewidth=2, label="Weak Agent (after training)")
+axes[2].axhline(y=0.47, linestyle='--', color=COLOR_MAP[2], linewidth=2, label="Strong Agent (after training)")
+axes[2].axhline(y=0.64, linestyle='--', color=COLOR_MAP[3], linewidth=2, label="DDPG Agent (after training)")
+axes[2].legend()
 
 print("ax 03 done")
 
@@ -130,9 +127,9 @@ plt.tight_layout()
 # Save individual plots
 fig.savefig("eval_tdmpc2_hockey_other_env.pdf")
 axes[0].figure.savefig("eval_tdmpc2_other_env_pendulum.pdf")
-axes[1].figure.savefig("eval_tdmpc2_other_env_lunarlander.pdf")
-axes[2].figure.savefig("eval_tdmpc2_hockey_training_episode_loss.pdf")
-axes[3].figure.savefig("eval_tdmpc2_hockey_training_episode_win_rates.pdf")
+# axes[1].figure.savefig("eval_tdmpc2_other_env_lunarlander.pdf")
+axes[1].figure.savefig("eval_tdmpc2_hockey_training_episode_loss.pdf")
+axes[2].figure.savefig("eval_tdmpc2_hockey_training_episode_win_rates.pdf")
 plt.show()
 
 print("All done")
