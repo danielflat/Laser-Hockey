@@ -25,7 +25,7 @@ import hockey.hockey_env as h_env
 BEST_TDMPC2_CHECKPOINT = get_path(
     "final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth")  # Which checkpoint do you want to test
 BEST_SAC_CHECKPOINT = get_path(
-    "final_checkpoints/sac_v4 epoch=2099999-step=6300000.ckpt")  # Which checkpoint do you want to test
+    "final_checkpoints/sac_stage3-v1.ckpt")  # Which checkpoint do you want to test
 BEST_MPO_CHECKPOINT = get_path(
     "final_checkpoints/mpo_with_tdmpc_2_sac_v5.pth")  # Which checkpoint do you want to test
 TOURNAMENT_RESULTS_FILE_NAME = get_path("plots/eval_mini_tournament_results.tex")
