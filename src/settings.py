@@ -185,12 +185,15 @@ SETTINGS = {
             "LOSS_FUNCTION": SMOOTH_L1_LOSS,
         },
         "POLICY_DELAY": 2,  # The delay of the policy optimization
-        "NOISE_CLIP": 0.1,  # The gaussian noise clip value
-        "HIDDEN_DIM": 128,
+        "NOISE_CLIP": 0.5,  # The gaussian noise clip value
+        "HIDDEN_DIM": 256,
         "NUM_LAYERS": 5,  # num hidden layers, only changed if target_net == false
         "BATCHNORM_MOMENTUM": 0.9,  # momentum for batchnorm, only used if target_net == false
         "NOISE": _DEFAULT_NOISE,
-        "CHECKPOINT_NAME": None,  # which checkpoint should be used for the TD3 Hockey agent?
+        "ACTION_NOISE": 0.2,  # The noise factor used for exploration
+        "TARGET_NOISE": 0.2, # Smoothing noise for the target policy
+        "CHECKPOINT_NAME": get_path("good_checkpoints/hockey_ddpg_smoothl1_25-01-22 17_36_56_100000.pth"),
+        # which checkpoint should be used for the TD3 Hockey agent?
     },
     "SAC": {
         "CHECKPOINT_NAME": get_path("final_checkpoints/sac_v4 epoch=2099999-step=6300000.ckpt"),
@@ -227,8 +230,9 @@ SETTINGS = {
         "KL_CONSTRAINT_MEAN": 0.01, # Mean Kl Constraint for cont AS
         "KL_CONSTRAINT_VAR": 0.0001, # Var Kl Constraint for cont AS
         "KL_CONSTRAINT": 0.01, # Kl Constraint for disc AS
-        "DISC_TO_CONT_TRAFO": True,
+        "DISC_TO_CONT_TRAFO": True, #NOTE: False is required for training the discrete MPO agent!
         # All other Hyperparameters are set in the MPO class
+        "HIDDEN_DIM" : 512,
         "CHECKPOINT_NAME": get_path("final_checkpoints/mpo_with_tdmpc_2_sac_v3.pth"),
         # which checkpoint should be used for the MPO Hockey agent?
     },
