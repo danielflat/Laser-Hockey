@@ -44,7 +44,7 @@ SETTINGS = {
         "USE_TF32": False,  # Uses TF32 instead of Float32. Makes it faster, but you have lower precision
 
         # Environment settings
-        "USE_ENV": LUNARLANDER_CONTINOUS,  # The used environment
+        "USE_ENV": HOCKEY,  # The used environment
         "PROXY_REWARDS": True,  # If the agent should get proxy rewards (works only with HOCKEY)
         "APPLY_OWN_REWARD_FUNCTION": False,  # whether to apply your own reward function or the one of the environment,
         "POST_EDIT_REWARD": False,  # whether you want to edit your rewards after an episode again or not.
