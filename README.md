@@ -88,12 +88,13 @@ python plots/eval_tdmpc2_hockey_training.py
 ### Note:
 
 The final checkpoints of the agents can be found in `final_checkpoints`.
-For the plots of the paper, `final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth` was used.
+For the **plots of the paper**, `final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth` was used.
 
-During tournament, we used `final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth` in the beginning,
+During the **RL Tournament 24/25**, we used
+`final_checkpoints/tdmpc2-v2-all-i6 25-02-20 17_44_47_000061500.pth` in the beginning,
 but changed to the better version `final_checkpoints/tdmpc2-v2-all-i7 25-02-20 17_44_47_000067500.pth`.
 
-Now the default is `final_checkpoints/tdmpc2-v2-all-i7 25-02-20 17_44_47_000067500.pth` for all the scripts.
+Now the **default** is `final_checkpoints/tdmpc2-v2-all-i7 25-02-20 17_44_47_000067500.pth` for all the scripts.
 
 
 

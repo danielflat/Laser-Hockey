@@ -228,7 +228,7 @@ class MPOAgent(Agent):
         self.number_disc_actions = mpo_settings.get("NUMBER_DISCRETE_ACTIONS", 7)
         # NOTE: We need 7 actions in the discrete hockey environment
         self.train_icm_freq = mpo_settings.get("TRAIN_ICM_FREQ", 32)
-        self.hidden_dim = mpo_settings.get("HIDDEN_DIM", 256)  
+        self.hidden_dim = mpo_settings.get("HIDDEN_DIM", 512)  
         self.curiosity = mpo_settings.get("CURIOSITY", None)
         self.sample_action_num = mpo_settings.get("SAMPLE_ACTION_NUM", 64) #N
         self.kl_constraint_scalar = mpo_settings.get("KL_CONSTRAINT_SCALAR", 0.1)
