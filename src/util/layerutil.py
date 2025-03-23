@@ -23,11 +23,12 @@ class NormedLinear(nn.Module):
     """
 
     def __init__(self, in_features: int, out_features: int, activation_function: str, bias: bool = False,
-                 dropout: float = 0.0):
+                 dropout: float = 0.0, residual: bool = False):
         super().__init__()
         self.linear = nn.Linear(in_features, out_features, bias = bias)
         self.dropout = nn.Dropout(dropout, inplace = False) if dropout else None
         self.layer_norm = nn.LayerNorm(out_features)
+        self.residual = residual
 
         if activation_function == "Mish":
             self.activation_function = nn.Mish(inplace = False)
@@ -36,10 +37,12 @@ class NormedLinear(nn.Module):
         else:
             raise NotImplementedError(f"Activation function {activation_function} not implemented.")
 
-    def forward(self, x):
-        x = self.linear(x)
+    def forward(self, x_orig):
+        x = self.linear(x_orig)
         if self.dropout:
             x = self.dropout(x)
         x = self.layer_norm(x)
         x = self.activation_function(x)
+        if self.residual:
+            x = x + x_orig
         return x
