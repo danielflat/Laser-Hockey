@@ -1,4 +1,4 @@
-<h1 style="text-align: center">The Bests Around</h1>
+<h1 style="text-align: center">The Bests Around - Playing Laser Hockey better than every Human</h1>
 
 ---
 
@@ -20,7 +20,7 @@
 ---
 
 This is the Code for the Project Report "The Bests Around – Hockey Tournament RL 24/25".
-<img src="hockey/assets/hockeyenv1.png">
+<img src="assets/hockey_gameplay_example.gif">
 
 ### Instructions
 
